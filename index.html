@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulse Lab Simulator</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 40 24" width="40" height="24"><path d="M1 18 C6 18 7 3 11 3 C14 3 14 10 17 10 C20 10 20 6 23 6 C27 6 27 18 39 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    </div>
+    <div>
+      <h1>Pulse Lab Simulator</h1>
+      <p class="sub">Pulse wave analysis · wave reflection · pulse wave velocity</p>
+    </div>
+  </div>
+  <div class="toolbar">
+    <button id="pinBtn" class="btn primary" title="Store the current state as a reference trace (B)">Pin baseline</button>
+    <button id="clearPin" class="btn" title="Remove baseline">Clear</button>
+    <button id="resetBtn" class="btn" title="Reset the active patient">Reset</button>
+    <div class="menu">
+      <button class="btn" id="exportBtn">Export ▾</button>
+      <div class="menu-list" id="exportMenu">
+        <button data-exp="png">Central waveform (PNG)</button>
+        <button data-exp="csv">Waveforms (CSV)</button>
+        <button data-exp="metrics">Metrics (CSV)</button>
+        <button data-exp="json">Parameters (JSON)</button>
+      </div>
+    </div>
+    <button id="presentBtn" class="btn" title="Larger type for projection (P)">Present</button>
+    <button id="themeBtn" class="btn icon" title="Light / dark theme" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="pt-switch" id="ptSwitch" role="tablist" aria-label="Choose patient to edit"></div>
+    <div class="side-section">
+      <label class="field">Starting profile
+        <select id="preset"></select>
+      </label>
+    </div>
+    <div class="side-section">
+      <div class="side-h">Medications <span class="hint">stack on top of the patient</span></div>
+      <div id="drugs" class="chips"></div>
+    </div>
+    <div id="controls"></div>
+    <p class="fine">Drugs act on physiology (muscular-artery PWV, reflection, arteriolar radius, HR, SV), never directly on the outputs. Directions follow Nichols &amp; Singh 2002 and Townsend et al. 2015, Table 1.</p>
+  </aside>
+
+  <main class="main">
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="sim">Simulator</button>
+      <button class="tab" data-tab="cmp">Compare A vs B</button>
+      <button class="tab" data-tab="learn">Learn</button>
+      <button class="tab" data-tab="cause">Cause &amp; effect</button>
+      <button class="tab" data-tab="sweep">Sweep</button>
+      <button class="tab" data-tab="imp">Impedance</button>
+      <button class="tab" data-tab="valid">Validation</button>
+      <button class="tab" data-tab="eq">Methods</button>
+    </nav>
+
+    <!-- ================= SIMULATOR ================= -->
+    <section class="tabpane active" id="tab-sim">
+      <div class="viewing" id="viewing"></div>
+      <div class="kpis" id="kpis"></div>
+
+      <div class="grid g-top">
+        <div class="card">
+          <div class="card-h">
+            <h2>Central aortic pressure <span class="muted">forward + reflected = measured</span></h2>
+            <div class="toggles">
+              <label><input type="checkbox" id="tgFwd" checked> Forward</label>
+              <label><input type="checkbox" id="tgBwd" checked> Reflected</label>
+              <label><input type="checkbox" id="tgBase" checked> Baseline</label>
+              <label><input type="checkbox" id="tgAnn" checked> Labels</label>
+            </div>
+          </div>
+          <div class="canvas-wrap tall"><canvas id="cCentral"></canvas></div>
+          <p class="caption" id="capCentral"></p>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>Arterial tree <span class="muted">wave travel, slowed ×6</span></h2>
+            <div class="toggles"><label><input type="checkbox" id="tgAnim" checked> Animate</label></div></div>
+          <div id="schematic" class="schematic"></div>
+        </div>
+      </div>
+
+      <div class="grid g-three">
+        <div class="card">
+          <div class="card-h"><h2>Central vs arm <span class="muted">amplification</span></h2></div>
+          <div class="canvas-wrap"><canvas id="cPeriph"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>Aortic flow</h2></div>
+          <div class="canvas-wrap"><canvas id="cFlow"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>Pressure budget <span class="muted">where SBP comes from</span></h2></div>
+          <div class="canvas-wrap"><canvas id="cBudget"></canvas></div>
+        </div>
+      </div>
+
+      <details class="card fold" id="foldIdx">
+        <summary><h2>All indices <span class="muted" id="baseNote"></span></h2><span class="chev" aria-hidden="true">▾</span></summary>
+        <div id="metricsTable" class="mtable"></div>
+      </details>
+    </section>
+
+    <!-- ================= COMPARE ================= -->
+    <section class="tabpane" id="tab-cmp">
+      <div id="scenario"></div>
+      <div class="cmp-head" id="cmpHead"></div>
+      <div class="grid g-two">
+        <div class="card">
+          <div class="card-h"><h2>Central aortic pressure</h2>
+            <div class="toggles"><label><input type="checkbox" id="tgCmpRefl"> Show reflected waves</label></div></div>
+          <div class="canvas-wrap tall"><canvas id="cCmpCentral"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>Arm (brachial) pressure <span class="muted">what a cuff sees</span></h2></div>
+          <div class="canvas-wrap tall"><canvas id="cCmpBrach"></canvas></div>
+        </div>
+      </div>
+      <div class="grid g-cmp">
+        <div class="card">
+          <div class="card-h"><h2>Side by side</h2><span class="muted">difference = B − A</span></div>
+          <div id="cmpTable"></div>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <div class="card-h"><h2>Pressure budget</h2></div>
+            <div class="canvas-wrap"><canvas id="cCmpBudget"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>What differs between them</h2></div>
+            <div id="cmpInputs"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= LEARN ================= -->
+    <section class="tabpane" id="tab-learn">
+      <div class="learn">
+        <nav class="lesson-nav" id="lessonNav" aria-label="Lessons"></nav>
+        <article class="lesson card" id="lesson"></article>
+      </div>
+    </section>
+
+    <!-- ================= CAUSE & EFFECT ================= -->
+    <section class="tabpane" id="tab-cause">
+      <div class="card">
+        <div class="card-h"><h2>Cause → effect map <span class="muted">move any slider; every variable lights up with its direction of change</span></h2>
+          <div class="toggles"><span class="legend-up">▲ increased</span><span class="legend-dn">▼ decreased</span><span class="muted">dashed = passive feedback: higher MAP stiffens elastic arteries</span></div></div>
+        <div id="causal" class="causal"></div>
+      </div>
+    </section>
+
+    <!-- ================= SWEEP ================= -->
+    <section class="tabpane" id="tab-sweep">
+      <div class="card">
+        <div class="card-h">
+          <h2>Sensitivity sweep <span class="muted">vary one input across its range; everything else stays at the active patient's values</span></h2>
+        </div>
+        <div class="sweep-controls">
+          <label class="sel">Input <select id="sweepVar"></select></label>
+          <div class="chips" id="sweepOuts"></div>
+        </div>
+        <div class="grid g-two">
+          <div><div class="canvas-wrap tall"><canvas id="cSweepP"></canvas></div></div>
+          <div><div class="canvas-wrap tall"><canvas id="cSweepI"></canvas></div></div>
+        </div>
+        <p class="caption" id="capSweep"></p>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Waveform family <span class="muted">central pressure at 6 points along the sweep</span></h2></div>
+        <div class="canvas-wrap tall"><canvas id="cFamily"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ================= IMPEDANCE ================= -->
+    <section class="tabpane" id="tab-imp">
+      <div class="grid g-two">
+        <div class="card">
+          <div class="card-h"><h2>Aortic input impedance modulus</h2></div>
+          <div class="canvas-wrap tall"><canvas id="cImp"></canvas></div>
+          <p class="caption">After Nichols &amp; Edwards 2001, Fig. 1. Zero frequency = peripheral resistance (SVR, off scale). The mean modulus above ~2 Hz approximates characteristic impedance Z<sub>c</sub> (proximal aortic stiffness). The first harmonic Z<sub>1</sub> tracks reflection amplitude, and the first minimum moves to higher frequency as reflections return earlier (≈ 1 / (2·Δt<sub>p</sub>)).</p>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>Three components of afterload</h2></div>
+          <div id="afterload" class="afterload"></div>
+          <div id="impStats" class="mtable compact"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VALIDATION ================= -->
+    <section class="tabpane" id="tab-valid"><div id="validation"></div></section>
+
+    <!-- ================= METHODS ================= -->
+    <section class="tabpane prose" id="tab-eq"><div class="card"><div id="equations"></div></div></section>
+    <footer class="site-foot">
+      <span><b>Pulse Lab Simulator</b> · created by Dov Greenwald, 2026</span>
+      <span>Educational model for teaching and research presentation. Not a medical device; do not use for diagnosis or treatment decisions.</span>
+    </footer>
+  </main>
+</div>
+
+<div id="tooltip" class="tooltip" role="tooltip"></div>
+
+<script src="js/model.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/schematic.js"></script>
+<script src="js/causal.js"></script>
+<script src="js/content.js"></script>
+<script src="js/lessons.js"></script>
+<script src="js/validation.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
