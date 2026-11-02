@@ -1,6 +1,6 @@
 /* Methods tab: equations (from v1), v2 engine and drug methods, illustrative drug values,
    differences from the v2 specification, limitations and references. */
-import { ALL_DRUGS, BAROREFLEX, CITATIONS, DRUG_EMAX, DRUG_KINETICS, ENGINE, MODEL } from './physiology';
+import { ALL_DRUGS, BAROREFLEX, CITATIONS, DRUG_EMAX, DRUG_KINETICS, ENGINE, MODEL, SV_HR_COUPLING } from './physiology';
 
 const fx = (d: Record<string, number | undefined>) => {
   const parts: string[] = [];
@@ -70,6 +70,7 @@ export function methodsHtml(): string {
   <li><b>Repeat doses of one drug saturate</b> (Emax model): exposure C is the sum of all doses' current levels, and effect E = E<sub>max</sub>·C / (EC₅₀ + C) with E<sub>max</sub> = ${DRUG_EMAX.emax} and EC₅₀ = ${(DRUG_EMAX.emax - 1).toFixed(1)}, so one full dose gives exactly the v1 effect and no amount exceeds ${Math.round(DRUG_EMAX.emax * 100)} %. “Drug effect %” on screen is E × 100.</li>
   <li><b>Different drugs combine in log space</b>: each multiplier is raised to E and the factors multiply; HR and SV changes scale with E. Inputs are then clamped to the slider ranges.</li>
   <li><b>Phenylephrine baroreflex</b>: HR falls ${BAROREFLEX.bpmPerMmHg} bpm per mmHg of MAP rise caused by phenylephrine, at most ${BAROREFLEX.maxFall} bpm.</li>
+  <li><b>Stroke volume when an acute drug slows the heart</b> (illustrative): a longer filling time raises stroke volume, SV × (HR before / HR after)<sup>${SV_HR_COUPLING.exponent}</sup>. It applies to HR falls caused by the six acute drugs, including the phenylephrine baroreflex. It does not apply to the seven long-term v1 drugs, which keep their exact v1 effects. With it, esmolol at defaults lowers MAP by about 19 % instead of 30 %.</li>
   <li>The seven v1 long-term drugs can start “at steady state”, which reproduces the v1 effect exactly.</li>
 </ul>
 <h4>Drug effects and time constants — illustrative teaching values</h4>
@@ -88,7 +89,8 @@ export function methodsHtml(): string {
 <h3>9 · Assumptions &amp; limitations</h3>
 <ul>
   <li>Single effective reflection site; the real tree has distributed reflections. Absolute Δtp values in youth are shorter than some invasive reports — trends, not absolute numbers, are the point.</li>
-  <li>The heart is a flow source: stroke volume does not change automatically with afterload or with filling time. A drug that only slows HR therefore lowers MAP in proportion (e.g. esmolol at defaults lowers MAP by about 30 %).</li>
+  <li>The heart is a flow source: stroke volume does not change with afterload, and changes with filling time only through the illustrative rule above for acute drugs. Moving the HR slider by hand, or a long-term v1 drug that slows HR, lowers MAP in proportion.</li>
+  <li>MAP = CO × SVR, so aortic stiffness changes pulse pressure and central systolic pressure but not MAP or its percentage fall with a vasodilator such as propofol. The model has no mechanism by which a stiff aorta worsens hypotension.</li>
   <li>Linear model; no venous pressure, no autoregulation. The only reflex is the phenylephrine baroreflex.</li>
   <li>Drug effects are illustrative parameter shifts, not pharmacokinetic models.</li>
   <li>Reflection magnitude depends heavily on the separation method; compare directions, not absolute values.</li>

@@ -134,7 +134,7 @@ export function renderRailBeat(ctx: Ctx): void {
   }
   const der: Partial<Record<ParamKey, string>> = {
     hr: `ejection ${m.et.toFixed(0)} ms · cycle ${(60000 / act.hr).toFixed(0)} ms${beat.effect.reflexBpm ? ` · baroreflex ${beat.effect.reflexBpm.toFixed(1)} bpm` : ''}`,
-    sv: `cardiac output ${m.co.toFixed(2)} L/min`, etScale: `ejection ${m.et.toFixed(0)} ms`,
+    sv: `cardiac output ${m.co.toFixed(2)} L/min${beat.effect.svRise > 0.05 ? ` · +${beat.effect.svRise.toFixed(1)} mL from slower HR` : ''}`, etScale: `ejection ${m.et.toFixed(0)} ms`,
     radius: `SVR ${m.svrDyn.toFixed(0)} dyn·s·cm⁻⁵`, cAo: `operating ${m.cAoOp.toFixed(1)} m/s at MAP ${m.map.toFixed(0)}`,
     diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s`,
     gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`

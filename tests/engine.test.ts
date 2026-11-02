@@ -5,7 +5,7 @@ import { TrendBuffer, TREND_CAPACITY, Ring } from '../src/engine/trends';
 import { newPatientSim, nextBeat, setTargets, catchUp } from '../src/engine/patient';
 import { newClock, tick, setPaused } from '../src/engine/clock';
 import { applyDrugs, derive, simulate } from '../src/model';
-import { ALL_CONTROLS, DEFAULTS, DRUGS, DRUG_KINETICS, PRESETS, type Params } from '../src/config/physiology';
+import { ALL_CONTROLS, DEFAULTS, DRUGS, DRUG_KINETICS, PRESETS, SV_HR_COUPLING, type Params } from '../src/config/physiology';
 
 const ev = (o: Partial<DrugEvent> & { drug: string }): DrugEvent => ({ id: 1, mode: 'infusion', t0: 0, tStop: null, dose: 1, ...o });
 
@@ -75,9 +75,11 @@ describe('drug kinetics', () => {
   });
   it('several drugs combine additively in log space', () => {
     const t = 1e6;                                     // effectively steady state
-    const a = applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'ntg' })], t).params;
-    const b = applyDrugEffects({ ...DEFAULTS }, [ev({ id: 2, drug: 'propofol' })], t).params;
-    const ab = applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'ntg' }), ev({ id: 2, drug: 'propofol' })], t).params;
+    // SV additions are compared before the separate HR → SV rise
+    const noRise = (r: ReturnType<typeof applyDrugEffects>) => ({ ...r.params, sv: r.params.sv - r.svRise });
+    const a = noRise(applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'ntg' })], t));
+    const b = noRise(applyDrugEffects({ ...DEFAULTS }, [ev({ id: 2, drug: 'propofol' })], t));
+    const ab = noRise(applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'ntg' }), ev({ id: 2, drug: 'propofol' })], t));
     const lr = (p: Params) => Math.log(p.cMus / DEFAULTS.cMus);
     expect(lr(ab)).toBeCloseTo(lr(a) + lr(b), 10);
     expect(ab.sv - DEFAULTS.sv).toBeCloseTo((a.sv - DEFAULTS.sv) + (b.sv - DEFAULTS.sv), 10);
@@ -116,7 +118,7 @@ describe('drug kinetics', () => {
   it('phenylephrine adds a baroreflex fall of 0.3 bpm per mmHg MAP rise, capped at 20', () => {
     const t = 1e6;
     const r = applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'phe' })], t);
-    const noReflex = { ...r.params, hr: DEFAULTS.hr };
+    const noReflex = { ...r.params, hr: DEFAULTS.hr, sv: r.params.sv - r.svRise };
     const rise = derive(noReflex).map - derive({ ...DEFAULTS }).map;
     expect(rise).toBeGreaterThan(0);
     expect(r.reflexBpm).toBeCloseTo(-Math.min(20, 0.3 * rise), 10);
@@ -186,5 +188,39 @@ describe('beat clock', () => {
     const far = catchUp(sim, 1000, 4);
     expect(far.beats.length).toBe(4);
     expect(far.sim.nextT).toBe(1000);
+  });
+});
+
+describe('stroke volume rise when an acute drug slows the heart', () => {
+  const steady = (drug: string, dose = 1): DrugEvent[] => [{ id: 1, drug, mode: 'infusion', t0: 0, tStop: null, dose, steady: true, rampS: 0 }];
+  it('esmolol: SV rises by (HR0/HR1)^0.5 and MAP falls about 15–22 % at defaults', () => {
+    const e = applyDrugEffects(DEFAULTS, steady('esmolol'), 1000);
+    expect(e.params.hr).toBeLessThan(DEFAULTS.hr);
+    const svNoRise = e.params.sv - e.svRise;
+    expect(e.params.sv).toBeCloseTo(svNoRise * Math.pow(DEFAULTS.hr / e.params.hr, SV_HR_COUPLING.exponent), 6);
+    const fall = 1 - simulate(e.params).m.map / simulate(DEFAULTS).m.map;
+    expect(fall).toBeGreaterThan(0.15); expect(fall).toBeLessThan(0.22);
+  });
+  it('no SV change for drugs that do not lower HR', () => {
+    expect(applyDrugEffects(DEFAULTS, steady('ntg'), 1000).svRise).toBe(0);
+    expect(applyDrugEffects(DEFAULTS, steady('dobutamine'), 1000).svRise).toBe(0);
+  });
+  it('the phenylephrine baroreflex HR fall also raises SV', () => {
+    const e = applyDrugEffects(DEFAULTS, steady('phe'), 1000);
+    expect(e.reflexBpm).toBeLessThan(0); expect(e.svRise).toBeGreaterThan(0);
+  });
+  it('long-term v1 drugs keep exact v1 effects (no SV rise)', () => {
+    for (const k of Object.keys(DRUGS)) {
+      const e = applyDrugEffects(DEFAULTS, steady(k), 1000);
+      expect(e.svRise).toBe(0);
+      expect(e.params).toEqual(applyDrugs(DEFAULTS, [k]));
+    }
+  });
+  it('propofol bolus lowers MAP 25–30 % at its peak, at defaults', () => {
+    const m0 = simulate(DEFAULTS).m.map;
+    let lo = Infinity;
+    for (let t = 0; t <= 300; t += 2) lo = Math.min(lo, simulate(applyDrugEffects(DEFAULTS, [{ id: 1, drug: 'propofol', mode: 'bolus', t0: 0, tStop: null, dose: 1 }], t).params).m.map);
+    const fall = 1 - lo / m0;
+    expect(fall).toBeGreaterThan(0.25); expect(fall).toBeLessThan(0.30);
   });
 });

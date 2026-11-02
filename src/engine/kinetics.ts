@@ -1,9 +1,9 @@
 /* Drug events on a timeline with first-order onset and offset.
    Doses of one drug add into one exposure that saturates (Emax); different drugs
    combine in log space (factor^E multiplied), additions scale with E, then inputs are clamped to the slider ranges. Phenylephrine adds a
-   baroreflex fall in HR. All pure. */
+   baroreflex fall in HR. HR falls caused by acute drugs raise SV slightly (illustrative). All pure. */
 import {
-  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_EMAX, DRUG_KINETICS, MODEL,
+  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_EMAX, DRUG_KINETICS, MODEL, SV_HR_COUPLING,
   type DrugMode, type Params, type ParamKey
 } from '../config/physiology';
 import { derive } from '../model/derive';
@@ -65,6 +65,7 @@ export interface EffectResult {
   /** one combined entry per drug, in order of first dose */
   levels: DrugLevel[];
   reflexBpm: number;        // baroreflex HR change (≤ 0)
+  svRise: number;           // illustrative SV rise from a drug-induced HR fall (mL, ≥ 0)
   clamped: ParamKey[];      // inputs held at a slider limit
 }
 
@@ -122,6 +123,18 @@ export function applyDrugEffects(base: Params, events: readonly DrugEvent[], t: 
     reflexBpm = -Math.min(BAROREFLEX.maxFall, BAROREFLEX.bpmPerMmHg * Math.max(0, rise));
     params.hr += reflexBpm;
   }
+  // illustrative SV rise for HR falls caused by acute drugs (incl. the baroreflex);
+  // v1 long-term drugs keep their exact v1 effects
+  const hrBefore = combine(base, levels.filter(l => DRUG_KINETICS[l.drug]?.chronic)).hr;
+  const [hrMin, hrMax] = RANGE.hr!;
+  const hrAfter = Math.min(hrMax, Math.max(hrMin, params.hr));
+  const hrRef = Math.min(hrMax, Math.max(hrMin, hrBefore));
+  let svRise = 0;
+  if (hrAfter < hrRef - 1e-9) {
+    const sv0 = params.sv;
+    params.sv *= Math.pow(hrRef / hrAfter, SV_HR_COUPLING.exponent);
+    svRise = params.sv - sv0;
+  }
   const clamped = clampToRanges(params);
-  return { params, levels, reflexBpm, clamped };
+  return { params, levels, reflexBpm, svRise, clamped };
 }

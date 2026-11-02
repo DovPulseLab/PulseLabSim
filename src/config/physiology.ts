@@ -225,7 +225,7 @@ export const ACUTE_DRUGS: Record<string, Drug> = {
   phe:        { label: 'Phenylephrine (acute)', short: 'Phenylephrine', fx: { radius: 0.92, cMus: 1.10, gamma: 1.20 }, illustrative: true, source: ACUTE_SOURCE },
   esmolol:    { label: 'Esmolol', short: 'Esmolol', fx: { hrAdd: -18, svAdd: -4 }, illustrative: true, source: ACUTE_SOURCE },
   dobutamine: { label: 'Dobutamine', short: 'Dobutamine', fx: { hrAdd: 15, svAdd: 15, radius: 1.03 }, illustrative: true, source: ACUTE_SOURCE },
-  propofol:   { label: 'Propofol', short: 'Propofol', fx: { radius: 1.08, cMus: 0.92, svAdd: -12, hrAdd: -3 }, illustrative: true, source: ACUTE_SOURCE },
+  propofol:   { label: 'Propofol', short: 'Propofol', fx: { radius: 1.05, cMus: 0.95, svAdd: -8, hrAdd: -3 }, illustrative: true, source: ACUTE_SOURCE },
   norepinephrine: { label: 'Norepinephrine', short: 'Norepi', fx: { radius: 0.93, cMus: 1.08, gamma: 1.12, hrAdd: 4, svAdd: 6 }, illustrative: true, source: ACUTE_SOURCE }
 };
 
@@ -239,6 +239,10 @@ export const ALL_DRUGS: Record<string, Drug> = { ...DRUGS, ...ACUTE_DRUGS };
 export const DRUG_EMAX = { emax: 1.2 } as const;
 
 /** Phenylephrine baroreflex: HR falls 0.3 bpm per mmHg MAP rise, at most 20 bpm. */
+/** Illustrative stroke-volume rise when an acute drug lowers HR (longer filling time):
+ *  SV × (HR before / HR after)^exponent. Live engine only; v1 long-term drugs are unchanged. */
+export const SV_HR_COUPLING = { exponent: 0.5, illustrative: true } as const;
+
 export const BAROREFLEX = { drug: 'phe', bpmPerMmHg: 0.3, maxFall: 20 } as const;
 
 /** Live engine settings. */
