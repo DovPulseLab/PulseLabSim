@@ -1,4 +1,5 @@
 import { MODEL, PHYS, type Params } from '../config/physiology';
+import { fixedPoint, type FixedPointOptions, type FixedPointResult } from './coupling';
 
 /** Operating parameters derived from the inputs for one beat. */
 export interface Derived {
@@ -25,6 +26,7 @@ export interface Derived {
   brachX: number;   // cm
   gArm: number;
   ep: number;       // Peterson modulus, mmHg
+  coupling: FixedPointResult;  // MAP ↔ PWV iteration result
 }
 
 /** Weissler LVET in seconds. */
@@ -39,14 +41,17 @@ export function operatingPWV(p: Params, map: number): { cAoOp: number; cMusOp: n
 }
 
 /** Ported from v1 derive(); same arithmetic in the same order. */
-export function derive(p: Params): Derived {
+export function derive(p: Params, couplingOpts: FixedPointOptions = {}): Derived {
   const { RHO, MMHG } = PHYS;
   const T = 60 / p.hr;
   const etW = weisslerLVET(p.hr);
   const ET = Math.min(Math.max(etW * p.etScale, MODEL.etMin), MODEL.etMaxFrac * T);
   const svr = p.svrRef / Math.pow(p.radius / 100, 4);   // Poiseuille r⁻⁴
   const qMean = p.sv / T;
-  const map = svr * qMean + PHYS.cvp;                    // MAP = CO × SVR (+ CVP, 0 in v1)
+  // Passive feedback: MAP sets operating PWV; the solved MAP is CO × SVR + CVP.
+  // With a flow-source heart MAP does not depend on PWV, so this settles in 2 steps.
+  const coupling = fixedPoint(() => svr * qMean + PHYS.cvp, MODEL.mapRef, couplingOpts);
+  const map = coupling.value;
   const { cAoOp, cMusOp } = operatingPWV(p, map);
   const A = Math.PI * Math.pow(p.diam / 2, 2);
   const zc = RHO * cAoOp / (A * 1e-4) / MMHG / 1e6;
@@ -67,5 +72,5 @@ export function derive(p: Params): Derived {
   const brachX = MODEL.brachFrac * armLen;
   const gArm = MODEL.gArm;
   const ep = 2 * rhoc2;
-  return { T, ET, svr, qMean, map, cAoOp, cMusOp, A, zc, lp, cPath, dtp, cTot, cTube, cTerm, g, kRefl, zt, rTerm, armLen, brachX, gArm, ep };
+  return { T, ET, svr, qMean, map, cAoOp, cMusOp, A, zc, lp, cPath, dtp, cTot, cTube, cTerm, g, kRefl, zt, rTerm, armLen, brachX, gArm, ep, coupling };
 }

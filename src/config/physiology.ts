@@ -185,6 +185,64 @@ export const DRUGS: Record<string, Drug> = {
   pe:      { label: 'Vasoconstrictor (phenylephrine)', short: 'Vasoconstrictor', fx: { radius: 0.96, cMus: 1.10, gamma: 1.18 }, illustrative: true, source: DIRECTION_SOURCE }
 };
 
+/* -------- drug kinetics and the acute (timeline) drugs --------
+   Every drug acts only on model inputs. Effect level E(t) ∈ [0, 1] follows
+   first-order onset (τon) and offset (τoff). Multipliers combine in log
+   space (factor^E, multiplied across drugs); additions scale with E.
+   All magnitudes and time constants are illustrative teaching values. */
+export type DrugMode = 'bolus' | 'infusion';
+
+export interface DrugKinetics {
+  tauOn: number;           // s
+  tauOff: number;          // s
+  modes: DrugMode[];
+  /** chronic = v1 long-term therapy; can start at steady state */
+  chronic: boolean;
+}
+
+export const DRUG_KINETICS: Record<string, DrugKinetics> = {
+  // v1 long-term drugs: slow on/off; usually started "at steady state"
+  acei:    { tauOn: 600, tauOff: 1800, modes: ['infusion'], chronic: true },
+  arb:     { tauOn: 600, tauOff: 1800, modes: ['infusion'], chronic: true },
+  ccb:     { tauOn: 600, tauOff: 1800, modes: ['infusion'], chronic: true },
+  bb:      { tauOn: 600, tauOff: 1800, modes: ['infusion'], chronic: true },
+  diur:    { tauOn: 900, tauOff: 2400, modes: ['infusion'], chronic: true },
+  nitrate: { tauOn: 300, tauOff: 900,  modes: ['infusion'], chronic: true },
+  pe:      { tauOn: 300, tauOff: 900,  modes: ['infusion'], chronic: true },
+  // acute drugs (spec): NTG τon 60 s / τoff 180 s; esmolol τon 60 s / τoff 600 s
+  ntg:     { tauOn: 60,  tauOff: 180,  modes: ['bolus', 'infusion'], chronic: false },
+  phe:     { tauOn: 30,  tauOff: 300,  modes: ['bolus', 'infusion'], chronic: false },
+  esmolol: { tauOn: 60,  tauOff: 600,  modes: ['bolus', 'infusion'], chronic: false },
+  dobutamine: { tauOn: 90, tauOff: 120, modes: ['infusion'], chronic: false },
+  propofol: { tauOn: 30, tauOff: 300,  modes: ['bolus', 'infusion'], chronic: false },
+  norepinephrine: { tauOn: 30, tauOff: 120, modes: ['infusion'], chronic: false }
+};
+
+const ACUTE_SOURCE = 'Illustrative teaching values. Directions: Nichols & Singh 2002; Townsend et al. 2015, Table 1 (vasodilators, β-blockade); standard pharmacology for inotropes, vasopressors and propofol.';
+
+export const ACUTE_DRUGS: Record<string, Drug> = {
+  ntg:        { label: 'Nitroglycerin', short: 'NTG', fx: { cMus: 0.75, gamma: 0.55, radius: 1.01, svAdd: -6 }, illustrative: true, source: ACUTE_SOURCE },
+  phe:        { label: 'Phenylephrine (acute)', short: 'Phenylephrine', fx: { radius: 0.92, cMus: 1.10, gamma: 1.20 }, illustrative: true, source: ACUTE_SOURCE },
+  esmolol:    { label: 'Esmolol', short: 'Esmolol', fx: { hrAdd: -18, svAdd: -4 }, illustrative: true, source: ACUTE_SOURCE },
+  dobutamine: { label: 'Dobutamine', short: 'Dobutamine', fx: { hrAdd: 15, svAdd: 15, radius: 1.03 }, illustrative: true, source: ACUTE_SOURCE },
+  propofol:   { label: 'Propofol', short: 'Propofol', fx: { radius: 1.08, cMus: 0.92, svAdd: -12, hrAdd: -3 }, illustrative: true, source: ACUTE_SOURCE },
+  norepinephrine: { label: 'Norepinephrine', short: 'Norepi', fx: { radius: 0.93, cMus: 1.08, gamma: 1.12, hrAdd: 4, svAdd: 6 }, illustrative: true, source: ACUTE_SOURCE }
+};
+
+/** Every drug: the 7 v1 long-term drugs plus the 6 acute drugs. */
+export const ALL_DRUGS: Record<string, Drug> = { ...DRUGS, ...ACUTE_DRUGS };
+
+/** Phenylephrine baroreflex: HR falls 0.3 bpm per mmHg MAP rise, at most 20 bpm. */
+export const BAROREFLEX = { drug: 'phe', bpmPerMmHg: 0.3, maxFall: 20 } as const;
+
+/** Live engine settings. */
+export const ENGINE = {
+  rampBeats: 3,             // input changes ease over 3 beats
+  trendWindowS: 600,        // 10 min of per-beat trends
+  warps: [0.25, 0.5, 1] as const,
+  historySteps: 50          // undo/redo depth
+} as const;
+
 /* ---------------- citations ---------------- */
 export const CITATIONS = {
   NE2001: 'Nichols WW, Edwards DG. Arterial elastance and wave reflection augmentation of systolic blood pressure: deleterious effects and implications for therapy. J Cardiovasc Pharmacol Ther 2001;6(1):5–21.',
