@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ease, inputsAt, retarget } from '../src/engine/transition';
-import { applyDrugEffects, effectLevel, type DrugEvent } from '../src/engine/kinetics';
+import { applyDrugEffects, effectLevel, emaxEffect, type DrugEvent } from '../src/engine/kinetics';
 import { TrendBuffer, TREND_CAPACITY, Ring } from '../src/engine/trends';
 import { newPatientSim, nextBeat, setTargets, catchUp } from '../src/engine/patient';
 import { newClock, tick, setPaused } from '../src/engine/clock';
@@ -81,9 +81,26 @@ describe('drug kinetics', () => {
     const lr = (p: Params) => Math.log(p.cMus / DEFAULTS.cMus);
     expect(lr(ab)).toBeCloseTo(lr(a) + lr(b), 10);
     expect(ab.sv - DEFAULTS.sv).toBeCloseTo((a.sv - DEFAULTS.sv) + (b.sv - DEFAULTS.sv), 10);
-    // half the effect level gives half the log change
-    const half = applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'ntg', dose: 0.5 })], t).params;
-    expect(lr(half)).toBeCloseTo(lr(a) / 2, 10);
+    // a partial effect E gives E × the full log change
+    const half = applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'ntg', dose: 0.5 })], t);
+    expect(lr(half.params)).toBeCloseTo(lr(a) * half.levels[0].effect, 10);
+  });
+  it('repeat doses of one drug saturate toward a single maximum (Emax) and show as one entry', () => {
+    expect(emaxEffect(0)).toBe(0);
+    expect(emaxEffect(1)).toBe(1);
+    const cs = [0.25, 0.5, 1, 2, 4, 8, 100];
+    const es = cs.map(c => emaxEffect(c));
+    es.forEach((e, i) => { if (i) expect(e).toBeGreaterThan(es[i - 1]); expect(e).toBeLessThan(1.2); });
+    const t = 1e6;
+    const four = [1, 2, 3, 4].map(id => ev({ id, drug: 'esmolol' }));
+    const r = applyDrugEffects({ ...DEFAULTS }, four, t);
+    expect(r.levels).toHaveLength(1);
+    expect(r.levels[0]).toMatchObject({ drug: 'esmolol', ids: [1, 2, 3, 4] });
+    expect(r.levels[0].exposure).toBeCloseTo(4, 6);
+    expect(r.levels[0].effect).toBeCloseTo(emaxEffect(4), 10);
+    expect(r.params.hr).toBeGreaterThanOrEqual(DEFAULTS.hr - 18 * 1.2);
+    const one = applyDrugEffects({ ...DEFAULTS }, [ev({ drug: 'esmolol' })], t).params.hr;
+    expect(DEFAULTS.hr - r.params.hr).toBeLessThan(1.2 * (DEFAULTS.hr - one));
   });
   it('clamps inputs to the slider ranges', () => {
     const t = 1e6;

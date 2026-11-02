@@ -232,6 +232,12 @@ export const ACUTE_DRUGS: Record<string, Drug> = {
 /** Every drug: the 7 v1 long-term drugs plus the 6 acute drugs. */
 export const ALL_DRUGS: Record<string, Drug> = { ...DRUGS, ...ACUTE_DRUGS };
 
+/** Repeat doses of one drug saturate (Emax model). Exposure C is the sum of every dose's
+ *  current level (1 = one standard dose at full effect). Effect E = Emax·C / (EC50 + C),
+ *  with EC50 = Emax − 1 so one full dose gives exactly E = 1 (the v1 effect) and no
+ *  amount of drug exceeds Emax = 1.2 (120 % of one dose). Illustrative. */
+export const DRUG_EMAX = { emax: 1.2 } as const;
+
 /** Phenylephrine baroreflex: HR falls 0.3 bpm per mmHg MAP rise, at most 20 bpm. */
 export const BAROREFLEX = { drug: 'phe', bpmPerMmHg: 0.3, maxFall: 20 } as const;
 

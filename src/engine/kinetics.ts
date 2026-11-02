@@ -1,9 +1,9 @@
 /* Drug events on a timeline with first-order onset and offset.
-   Effects combine in log space (factor^E multiplied across drugs), additions scale
-   with E, then inputs are clamped to the slider ranges. Phenylephrine adds a
+   Doses of one drug add into one exposure that saturates (Emax); different drugs
+   combine in log space (factor^E multiplied), additions scale with E, then inputs are clamped to the slider ranges. Phenylephrine adds a
    baroreflex fall in HR. All pure. */
 import {
-  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_KINETICS, MODEL,
+  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_EMAX, DRUG_KINETICS, MODEL,
   type DrugMode, type Params, type ParamKey
 } from '../config/physiology';
 import { derive } from '../model/derive';
@@ -46,9 +46,24 @@ export function effectLevel(ev: DrugEvent, t: number): number {
   return atStop * Math.exp(-(t - ev.tStop) / k.tauOff);
 }
 
+/** Combined effect of all doses of one drug (exposure C) — saturates at Emax. */
+export function emaxEffect(c: number, emax: number = DRUG_EMAX.emax): number {
+  if (c <= 0) return 0;
+  if (c === 1) return 1;                       // one full dose = exactly the v1 effect
+  return emax * c / ((emax - 1) + c);
+}
+
+export interface DrugLevel {
+  drug: string;
+  ids: number[];            // events contributing
+  exposure: number;         // C: sum of dose levels (1 = one standard dose at full effect)
+  effect: number;           // E after saturation; 1 = one dose's full effect, max 1.2
+}
+
 export interface EffectResult {
   params: Params;
-  levels: { id: number; drug: string; level: number }[];
+  /** one combined entry per drug, in order of first dose */
+  levels: DrugLevel[];
   reflexBpm: number;        // baroreflex HR change (≤ 0)
   clamped: ParamKey[];      // inputs held at a slider limit
 }
@@ -56,12 +71,12 @@ export interface EffectResult {
 const RANGE: Partial<Record<ParamKey, [number, number]>> =
   Object.fromEntries(ALL_CONTROLS.map(c => [c.key, [c.min, c.max] as [number, number]]));
 
-/** Multiply/add each event's effect onto the inputs (no clamping). */
-function combine(base: Params, evs: { ev: DrugEvent; e: number }[]): Params {
+/** Multiply/add each drug's combined effect onto the inputs (no clamping). */
+function combine(base: Params, levels: DrugLevel[]): Params {
   const p: Params = { ...base };
-  for (const { ev, e } of evs) {
+  for (const { drug, effect: e } of levels) {
     if (e === 0) continue;
-    const fx = ALL_DRUGS[ev.drug].fx;
+    const fx = ALL_DRUGS[drug].fx;
     // e = 1 gives exactly the v1 factor (x^1 = x), so steady state matches v1 applyDrugs
     const pow = (f: number) => (e === 1 ? f : Math.pow(f, e));
     if (fx.radius) p.radius *= pow(fx.radius);
@@ -83,17 +98,30 @@ function clampToRanges(p: Params): ParamKey[] {
   return hit;
 }
 
+/** Group events by drug: exposure = sum of dose levels, effect = Emax curve of exposure. */
+export function drugLevels(events: readonly DrugEvent[], t: number): DrugLevel[] {
+  const by = new Map<string, DrugLevel>();
+  for (const ev of events) {
+    const c = effectLevel(ev, t) * ev.dose;
+    const g = by.get(ev.drug) ?? { drug: ev.drug, ids: [], exposure: 0, effect: 0 };
+    g.ids.push(ev.id); g.exposure += c;
+    by.set(ev.drug, g);
+  }
+  for (const g of by.values()) g.effect = emaxEffect(g.exposure);
+  return [...by.values()];
+}
+
 /** Inputs at clock time t with every drug event applied. */
 export function applyDrugEffects(base: Params, events: readonly DrugEvent[], t: number): EffectResult {
-  const evs = events.map(ev => ({ ev, e: effectLevel(ev, t) * ev.dose }));
-  const params = combine(base, evs);
+  const levels = drugLevels(events, t);
+  const params = combine(base, levels);
   let reflexBpm = 0;
-  if (evs.some(x => x.ev.drug === BAROREFLEX.drug && x.e > 0)) {
-    const without = combine(base, evs.filter(x => x.ev.drug !== BAROREFLEX.drug));
+  if (levels.some(l => l.drug === BAROREFLEX.drug && l.effect > 0)) {
+    const without = combine(base, levels.filter(l => l.drug !== BAROREFLEX.drug));
     const rise = derive(params).map - derive(without).map;
     reflexBpm = -Math.min(BAROREFLEX.maxFall, BAROREFLEX.bpmPerMmHg * Math.max(0, rise));
     params.hr += reflexBpm;
   }
   const clamped = clampToRanges(params);
-  return { params, levels: evs.map(x => ({ id: x.ev.id, drug: x.ev.drug, level: x.e })), reflexBpm, clamped };
+  return { params, levels, reflexBpm, clamped };
 }

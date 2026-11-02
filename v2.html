@@ -17,6 +17,8 @@
   .kpis b { font-size: 1.15rem; }
   #msg { color: #9a3412; min-height: 1.2em; }
   #status { font-weight: 600; }
+  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .85em; margin-bottom: .3rem; }
+  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: .35rem; }
   footer { margin-top: 1rem; font-size: .85em; color: #555; }
 </style>
 </head>
@@ -36,8 +38,15 @@
   <div class="kpis" id="kpis"></div>
   <p id="msg" role="status"></p>
   <canvas id="wave" aria-label="Central and brachial pressure, current beat"></canvas>
-  <p style="margin:.6rem 0 .2rem">Trend (last 10 min): central SBP, cuff SBP, MAP, HR. Grey lines mark drug events.</p>
+  <p style="margin:.6rem 0 .2rem">Trend (last 10 min). Solid grey lines: drug given; dashed: infusion stopped.</p>
+  <div class="legend" aria-label="Trend legend">
+    <span><i style="background:#1d2433"></i>Central SBP (mmHg)</span>
+    <span><i style="background:#7a4fb5"></i>Cuff SBP (mmHg)</span>
+    <span><i style="background:#2a7fb8"></i>MAP (mmHg)</span>
+    <span><i style="background:#c0262d"></i>Heart rate (bpm)</span>
+  </div>
   <canvas id="trend" aria-label="Per-beat trends"></canvas>
+  <p style="font-size:.85em;color:#556">Drug effect: each drug's combined effect as a % of one standard dose at full effect. Repeat doses of the same drug add up but saturate at 120 %.</p>
   <footer>Educational model only; not a medical device; not for diagnosis or treatment decisions. Created by Dov Greenwald, 2026.</footer>
   <script type="module" src="/src/main.ts"></script>
 </body>

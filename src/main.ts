@@ -47,9 +47,21 @@ function syncControls() {
     const c = ALL_CONTROLS.find(x => x.key === key)!;
     const el = sliders.querySelector<HTMLInputElement>(`[data-k="${key}"]`)!;
     if (document.activeElement !== el) el.value = String(p[key]);
-    sliders.querySelector(`[data-v="${key}"]`)!.textContent = `${p[key].toFixed(c.f)} ${c.unit}`;
   }
+  renderSliderValues();
   renderDrugs();
+}
+/** "70 bpm", or "70 → 44 bpm" when drugs (or the baroreflex) move the value actually used. */
+function renderSliderValues() {
+  const p = app().patients.A.inputs;
+  for (const key of SHOWN) {
+    const c = ALL_CONTROLS.find(x => x.key === key)!;
+    const set = p[key], actual = beat ? beat.effect.params[key] : set;
+    const differs = Math.abs(actual - set) >= c.step / 2;
+    const el = sliders.querySelector<HTMLElement>(`[data-v="${key}"]`)!;
+    el.textContent = differs ? `${set.toFixed(c.f)} → ${actual.toFixed(c.f)} ${c.unit}` : `${set.toFixed(c.f)} ${c.unit}`;
+    el.title = differs ? 'set value → value after drugs' : '';
+  }
 }
 
 const drugs = $('#drugs');
@@ -161,11 +173,22 @@ function drawTrend() {
   const Y = (v: number) => h - 18 - (h - 28) * (v - 40) / (200 - 40);
   ctx.fillStyle = '#667'; ctx.font = '11px system-ui';
   for (let v = 40; v <= 200; v += 40) ctx.fillText(String(v), 4, Y(v) + 4);
-  for (const e of app().patients.A.events) {
-    if (e.t0 < t0 || e.t0 > t1) continue;
-    ctx.strokeStyle = '#c3c8d0'; ctx.beginPath(); ctx.moveTo(X(e.t0), 10); ctx.lineTo(X(e.t0), h - 18); ctx.stroke();
-    ctx.fillText(`${ALL_DRUGS[e.drug].short} ${e.mode}`, X(e.t0) + 3, 12);
+  // drug markers: labels stacked into rows so they never overlap
+  const rowEnds: number[] = [];
+  const evs = app().patients.A.events.filter(e => e.t0 >= t0 && e.t0 <= t1).sort((a, b) => a.t0 - b.t0);
+  for (const e of evs) {
+    const x = X(e.t0), text = `${ALL_DRUGS[e.drug].short} ${e.mode}`, tw = ctx.measureText(text).width;
+    let row = rowEnds.findIndex(end => end < x);
+    if (row < 0) { row = rowEnds.length; rowEnds.push(0); }
+    rowEnds[row] = x + 3 + tw + 6;
+    const y = 12 + row * 13;
+    ctx.strokeStyle = '#c3c8d0'; ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x, h - 18); ctx.stroke();
+    ctx.fillStyle = '#556'; ctx.fillText(text, x + 3, y);
+    if (e.tStop != null && e.tStop <= t1) {
+      ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(X(e.tStop), y - 9); ctx.lineTo(X(e.tStop), h - 18); ctx.stroke(); ctx.setLineDash([]);
+    }
   }
+  ctx.fillStyle = '#667';
   const ts = tr.map(s => s.t);
   line(ctx, ts, tr.map(s => s.cSBP), X, Y, '#1d2433');
   line(ctx, ts, tr.map(s => s.sbp), X, Y, '#7a4fb5');
@@ -176,11 +199,12 @@ function drawTrend() {
 function drawKpis() {
   if (!beat) return;
   const m = beat.res.m, e = beat.effect;
-  const active = e.levels.filter(l => l.level > 0.005).map(l => `${ALL_DRUGS[l.drug].short} ${(l.level * 100).toFixed(0)}%`).join(', ') || 'none';
+  const active = e.levels.filter(l => l.effect > 0.005)
+    .map(l => `${ALL_DRUGS[l.drug].short} ${(l.effect * 100).toFixed(0)} %${l.ids.length > 1 ? ` (${l.ids.length} doses)` : ''}`).join(', ') || 'none';
   $('#kpis').innerHTML = [
     ['Central BP', `${m.Ps.toFixed(0)}/${m.Pd.toFixed(0)}`], ['Cuff BP', `${m.bSBP.toFixed(0)}/${m.bDBP.toFixed(0)}`], ['MAP', m.map.toFixed(0)],
     ['HR', e.params.hr.toFixed(0) + (e.reflexBpm ? ` (reflex ${e.reflexBpm.toFixed(1)})` : '')], ['AIx', m.AIx.toFixed(0) + ' %'],
-    ['Aortic PWV', m.cAoOp.toFixed(1)], ['Beat', String(beat.index)], ['Time', `${clock.t.toFixed(1)} s`], ['Drug effect', active]
+    ['Aortic PWV', m.cAoOp.toFixed(1)], ['Beat', String(beat.index)], ['Time', `${clock.t.toFixed(1)} s`], ['Drug effect (% of one full dose; max 120 %)', active]
   ].map(([k, v]) => `<span>${k}<br><b>${v}</b></span>`).join('');
 }
 
@@ -193,6 +217,7 @@ function frame(now: number) {
   if (r.beats.length) beat = r.beats[r.beats.length - 1];
   if (r.beats.length || !beat) { drawWave(); drawTrend(); }
   drawKpis();
+  if (r.beats.length) renderSliderValues();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
