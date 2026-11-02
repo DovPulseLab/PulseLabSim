@@ -3,51 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pulse Lab Simulator v2 (in development)</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem 1.5rem; color: #1d2433; background: #f7f8fa; }
-  h1 { font-size: 1.2rem; margin: 0 0 .25rem; }
-  .row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin: .5rem 0; }
-  canvas { width: 100%; background: #fff; border: 1px solid #dde1e8; border-radius: 6px; display: block; }
-  #wave { height: 300px; } #trend { height: 200px; }
-  button { font: inherit; padding: .3rem .6rem; border: 1px solid #b8c0cc; border-radius: 5px; background: #fff; cursor: pointer; }
-  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
-  label { display: flex; gap: .4rem; align-items: center; }
-  .kpis { display: flex; gap: 1.2rem; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
-  .kpis b { font-size: 1.15rem; }
-  #msg { color: #9a3412; min-height: 1.2em; }
-  #status { font-weight: 600; }
-  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .85em; margin-bottom: .3rem; }
-  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: .35rem; }
-  footer { margin-top: 1rem; font-size: .85em; color: #555; }
-</style>
+<meta name="description" content="Pulse Lab Simulator: a live, beat-by-beat educational model of arterial pulse wave analysis and pulse wave velocity.">
+<title>Pulse Lab Simulator</title>
 </head>
 <body>
-  <h1>Pulse Lab Simulator v2 — stage 2 engine demo</h1>
-  <div class="row">
-    <span id="status">● live</span>
-    <button id="pause">Pause (Space)</button>
-    <button id="step">Step beat (.)</button>
-    <label>Speed <select id="warp"><option>0.25</option><option>0.5</option><option selected>1</option></select></label>
-    <button id="undo">Undo</button><button id="redo">Redo</button>
-    <button id="pin">Pin baseline (B)</button>
-    <button id="copy">Copy link</button>
-  </div>
-  <div class="row" id="sliders"></div>
-  <div class="row" id="drugs"></div>
-  <div class="kpis" id="kpis"></div>
-  <p id="msg" role="status"></p>
-  <canvas id="wave" aria-label="Central and brachial pressure, current beat"></canvas>
-  <p style="margin:.6rem 0 .2rem">Trend (last 10 min). Solid grey lines: drug given; dashed: infusion stopped.</p>
-  <div class="legend" aria-label="Trend legend">
-    <span><i style="background:#1d2433"></i>Central SBP (mmHg)</span>
-    <span><i style="background:#7a4fb5"></i>Cuff SBP (mmHg)</span>
-    <span><i style="background:#2a7fb8"></i>MAP (mmHg)</span>
-    <span><i style="background:#c0262d"></i>Heart rate (bpm)</span>
-  </div>
-  <canvas id="trend" aria-label="Per-beat trends"></canvas>
-  <p style="font-size:.85em;color:#556">Drug effect: each drug's combined effect as a % of one standard dose at full effect. Repeat doses of the same drug add up but saturate at 120 %.</p>
-  <footer>Educational model only; not a medical device; not for diagnosis or treatment decisions. Created by Dov Greenwald, 2026.</footer>
-  <script type="module" src="/src/main.ts"></script>
+<div id="root"></div>
+<noscript>Pulse Lab Simulator needs JavaScript. Educational model only; not a medical device.</noscript>
+<script type="module" src="/src/main.ts"></script>
 </body>
 </html>

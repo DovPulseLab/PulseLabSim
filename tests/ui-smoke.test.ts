@@ -1,0 +1,126 @@
+// @vitest-environment happy-dom
+/* Headless smoke test of the whole UI: boots main.ts in a simulated DOM (canvas calls are
+   stubbed), then drives tabs, controls, drugs, pin, undo, sweep keys and a bad import.
+   Catches runtime errors such as missing elements; it does not check visuals. */
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+const errors: unknown[] = [];
+let rafQueue: FrameRequestCallback[] = [];
+let now = 0;
+
+function stubCanvas(): void {
+  const noop = () => undefined;
+  const ctx = new Proxy({}, {
+    get: (_t, k) => k === 'measureText' ? () => ({ width: 10 }) : k === 'getLineDash' ? () => [] : noop,
+    set: () => true
+  });
+  // @ts-expect-error test stub
+  HTMLCanvasElement.prototype.getContext = () => ctx;
+  HTMLCanvasElement.prototype.toBlob = noop as never;
+  Element.prototype.getBoundingClientRect = function () { return { x: 0, y: 0, left: 0, top: 0, right: 600, bottom: 300, width: 600, height: 300, toJSON: noop } as DOMRect; };
+  Object.defineProperty(HTMLElement.prototype, 'offsetParent', { get() { return this.closest('[hidden]') ? null : document.body; }, configurable: true });
+  // SVG path geometry
+  const svgProto = (window as unknown as { SVGElement: typeof SVGElement }).SVGElement.prototype as unknown as Record<string, unknown>;
+  svgProto.getTotalLength = () => 100;
+  svgProto.getPointAtLength = () => ({ x: 1, y: 1 });
+}
+
+async function frames(n: number, dtMs = 50): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    now += dtMs;
+    const q = rafQueue; rafQueue = [];
+    for (const f of q) f(now);
+    await Promise.resolve();
+  }
+}
+
+const click = (sel: string) => { const el = document.querySelector<HTMLElement>(sel); if (!el) throw new Error(`missing ${sel}`); el.click(); };
+const key = (k: string, opts: KeyboardEventInit = {}) => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...opts }));
+
+beforeAll(async () => {
+  stubCanvas();
+  window.addEventListener('error', e => errors.push(e.error ?? e.message));
+  vi.spyOn(console, 'error').mockImplementation((...a) => { errors.push(a); });
+  vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => { rafQueue.push(f); return rafQueue.length; });
+  vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => undefined }));
+  document.body.innerHTML = '<div id="root"></div>';
+  await import('../src/main');
+  await frames(5);
+});
+
+describe('UI smoke test', () => {
+  it('boots with the start screen and live beats', async () => {
+    expect(document.querySelector('#startOverlay')!.hasAttribute('hidden')).toBe(false);
+    click('[data-start="free"]');
+    click('#tourSkip');
+    await frames(40);
+    expect(document.querySelector('#card-cuff .num')!.textContent).toMatch(/\d+\/\d+/);
+    expect(errors).toEqual([]);
+  });
+
+  it('every tab renders (keys 1–7)', async () => {
+    for (const k of ['1', '2', '3', '4', '5', '6', '7']) {
+      key(k); await frames(25);
+      const tab = ['sim', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'][Number(k) - 1];
+      expect(document.querySelector(`#pane-${tab}`)!.hasAttribute('hidden')).toBe(false);
+      expect(document.querySelector(`#pane-${tab}`)!.innerHTML.length).toBeGreaterThan(200);
+    }
+    expect(document.querySelector('#pane-valid')!.textContent).toContain('Formula checks');
+    expect(errors).toEqual([]);
+  });
+
+  it('inputs, drugs, pin, undo and explain work', async () => {
+    key('1');
+    const hr = document.querySelector<HTMLInputElement>('#num-hr')!;
+    hr.value = '90'; hr.dispatchEvent(new Event('change', { bubbles: true }));
+    await frames(60);
+    expect(document.querySelector('#val-hr')!.textContent).toContain('90');
+    key('b'); await frames(5);
+    expect(document.querySelector('#clearPin')!.hasAttribute('hidden')).toBe(false);
+    click('[data-give="esmolol"][data-mode="bolus"]');
+    await frames(200, 100);
+    expect(document.querySelector('#activeDrugs')!.textContent).toContain('%');
+    expect(document.querySelector('#card-hr .d')!.textContent).toMatch(/▼/);
+    key('z', { ctrlKey: true }); await frames(5);
+    key('3'); await frames(30);
+    expect(document.querySelectorAll('#causal .node-rect').length).toBeGreaterThan(20);
+    click('#card-aix'); await frames(2);
+    expect(document.querySelector('#drawer')!.classList.contains('open')).toBe(true);
+    expect(document.querySelector('#drawerNow')!.textContent).toContain('Patient A');
+    key('Escape');
+    expect(errors).toEqual([]);
+  });
+
+  it('compare, lesson try-it, sweep stepping, pause/step and present', async () => {
+    key('3'); click('[data-lesson="1"]'); click('#tryBtn'); await frames(30);
+    expect(document.querySelector('#pane-cmp')!.hasAttribute('hidden')).toBe(false);
+    expect(document.querySelector('#cmpDiffers')!.textContent!.length).toBeGreaterThan(10);
+    click('[data-act="swap"]'); await frames(20);
+    key('4'); key(']'); key(']'); key('['); await frames(5);
+    expect(document.querySelector('#sweepSel')!.textContent).toContain('point 2/6');
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    key(' '); await frames(3);
+    expect(document.querySelector('#liveTxt')!.textContent).toBe('Paused');
+    key('.'); key('.'); await frames(3);
+    key(' '); key('p'); await frames(5); key('p');
+    click('#themeBtn'); await frames(3);
+    expect(errors).toEqual([]);
+  });
+
+  it('a corrupt JSON import is rejected and settings are kept', async () => {
+    const before = document.querySelector<HTMLInputElement>('#num-hr')!.value;
+    const { importFile } = await import('../src/ui/io');
+    const file = new File(['{"format":"pulse-lab","version":2,"patients":{"A":{"preset":"Default adult (45 y)","inputs":{"hr":"fast"},"events":[]},"B":{}}}'], 'bad.json');
+    // reach the ctx through a fresh import is not possible; use the file input instead
+    const inp = document.querySelector<HTMLInputElement>('#importFile')!;
+    Object.defineProperty(inp, 'files', { value: [file], configurable: true });
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 20)); await frames(3);
+    expect(document.querySelector('#toast')!.textContent).toMatch(/Import rejected — patients\.A\.inputs\.hr/);
+    expect(document.querySelector<HTMLInputElement>('#num-hr')!.value).toBe(before);
+    expect(typeof importFile).toBe('function');
+    expect(errors).toEqual([]);
+  });
+});

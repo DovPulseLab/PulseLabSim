@@ -1,223 +1,215 @@
-// Stage 2 demo: the live beat engine with a few inputs and drugs. Replaced by the full UI in stage 3.
-import { ACUTE_DRUGS, ALL_CONTROLS, ALL_DRUGS, DRUG_KINETICS, type ParamKey } from './config/physiology';
-import { newClock, tick, type Clock, type Warp } from './engine/clock';
-import { catchUp, newPatientSim, nextBeat, setEvents, setTargets, type Beat, type PatientSim } from './engine/patient';
-import { simulate, type BeatResult } from './model';
-import { createStore } from './state/store';
+/* Pulse Lab Simulator v2: bootstrap, render loop, keyboard and wiring. */
+import './ui/style.css';
+import type { Warp } from './engine/clock';
+import { simulate } from './model/solve';
+import { redrawChart } from './render/chart';
+import { clearColourCache } from './render/theme';
+import { createStore, type Action } from './state/store';
+import { TABS, type TabId } from './state/types';
 import { decodeHash, encodeState } from './state/url';
+import { buildCards, renderCards } from './ui/cards';
+import type { Ctx } from './ui/context';
+import { $, $$, toast } from './ui/dom';
+import { buildDrawer, closeDrawer, drawerOpen, explainFocused, openDrawer, renderDrawer } from './ui/drawer';
+import { copyLink, exportAs, importFile } from './ui/io';
+import { initLayout, initTheme, togglePresent, toggleTheme } from './ui/layout';
+import { Live } from './ui/live';
+import { drawMonitor } from './ui/monitor';
+import { buildRail, renderRail, renderRailBeat } from './ui/rail';
+import { buildShell } from './ui/shell';
+import { endTour, showStart, startSeen, startTour, tourActive } from './ui/start';
+import { buildCmp, renderCmp } from './ui/tabs/cmp';
+import { buildImp, renderImp } from './ui/tabs/imp';
+import { buildLearn, renderLearnBeat, renderLesson, setCausalRef } from './ui/tabs/learn';
+import { beatSim, buildSim, renderSim, tickSim } from './ui/tabs/sim';
+import { renderMethods, renderValidation } from './ui/tabs/static';
+import { buildSweep, renderSweep, stepSweep } from './ui/tabs/sweep';
+import { buildTrend, renderTrend } from './ui/trend';
 
-const $ = <T extends HTMLElement>(s: string) => document.querySelector(s) as T;
+initTheme();
+buildShell(document.getElementById('root')!);
+
 const decoded = decodeHash(location.hash);
 const store = createStore(decoded.state);
-const msg = (t: string) => { $('#msg').textContent = t; };
-if (decoded.error) msg(decoded.error); else if (decoded.warnings.length) msg(decoded.warnings.join(' · '));
+const live = new Live(decoded.state);
 
-const app = () => store.get().app;
-let clock: Clock = { ...newClock(app().t), paused: app().paused, warp: app().warp };
-let sim: PatientSim = newPatientSim(app().patients.A.inputs, app().patients.A.events, clock.t);
-let beat: Beat | null = null;
-let pinned: BeatResult | null = app().pinned ? simulate(app().pinned!.params) : null;
+const ctx: Ctx = {
+  store, live,
+  active: () => store.get().app.active,
+  tab: () => store.get().app.tab,
+  explain: id => openDrawer(ctx, id),
+  syncClock: () => store.dispatch({ type: 'setClock', t: live.clock.t })
+};
+
+buildRail(ctx); buildCards(); buildTrend(ctx); buildDrawer();
+buildSim(ctx); buildCmp(ctx); buildLearn(ctx); buildSweep(ctx); buildImp(ctx);
+renderLesson();
+
+/* ---------- rendering ---------- */
+const BEAT_TABS: Partial<Record<TabId, () => void>> = {
+  sim: () => beatSim(ctx), cmp: () => renderCmp(ctx), learn: () => renderLearnBeat(ctx),
+  sweep: () => renderSweep(ctx), imp: () => renderImp(ctx)
+};
+
+/** Everything that depends on the latest beat. */
+function renderBeatViews(): void {
+  renderCards(ctx); renderRailBeat(ctx); renderTrend(ctx); renderDrawer(ctx);
+  BEAT_TABS[ctx.tab()]?.();
+}
+
+function renderTop(): void {
+  const s = store.get(), app = s.app;
+  $('#liveBtn').classList.toggle('paused', app.paused);
+  $('#liveTxt').textContent = app.paused ? 'Paused' : 'Live';
+  $('#liveBtn').setAttribute('aria-label', app.paused ? 'Paused: press to resume' : 'Live: press to pause');
+  $<HTMLButtonElement>('#stepBtn').disabled = !app.paused;
+  $$('#warp button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.warp) === app.warp)));
+  $<HTMLButtonElement>('#undoBtn').disabled = !s.history.past.length;
+  $<HTMLButtonElement>('#redoBtn').disabled = !s.history.future.length;
+  $('#pinBtn').textContent = app.pinned ? `Re-pin baseline (${app.pinned.patient})` : 'Pin baseline';
+  $('#clearPin').hidden = !app.pinned;
+  for (const t of TABS) {
+    $(`#tab-${t}`).setAttribute('aria-selected', String(t === app.tab));
+    $(`#pane-${t}`).hidden = t !== app.tab;
+  }
+}
+
+function showTab(tab: TabId): void {
+  if (tab === 'valid') renderValidation();
+  else if (tab === 'eq') renderMethods();
+  else if (tab === 'learn') { renderLesson(); renderLearnBeat(ctx); }
+  BEAT_TABS[tab]?.();
+}
+
+/** Redraw all visible canvases (after resize, theme or Present). */
+function renderAll(): void {
+  clearColourCache();
+  renderTrend(ctx);
+  showTab(ctx.tab());
+  for (const c of $$<HTMLCanvasElement>('canvas')) if (c.offsetParent) redrawChart(c);
+}
+
+/* ---------- store → live runtime ---------- */
+const PATIENT_ACTIONS = new Set<Action['type']>(['setInput', 'loadPreset', 'resetPatient', 'giveDrug', 'stopDrug', 'removeDrug', 'setPatients', 'undo', 'redo']);
+let lastCoalesce: string | undefined;
+let urlTimer = 0;
 
 store.subscribe((s, a) => {
-  const p = s.app.patients.A;
-  if (a.type === 'replace') { sim = newPatientSim(p.inputs, p.events, clock.t); return; }
-  sim = setEvents(setTargets(sim, p.inputs), p.events);
-  if (s.warnings.length) msg(s.warnings.join(' · '));
-  syncControls();
-});
-
-/* ---------- controls ---------- */
-const SHOWN: ParamKey[] = ['hr', 'sv', 'radius', 'cAo', 'gamma', 'lpScale'];
-const sliders = $('#sliders');
-for (const key of SHOWN) {
-  const c = ALL_CONTROLS.find(x => x.key === key)!;
-  const l = document.createElement('label');
-  l.innerHTML = `${c.label} <input type="range" min="${c.min}" max="${c.max}" step="${c.step}" data-k="${key}" aria-label="${c.label}"> <span data-v="${key}"></span>`;
-  l.title = c.tip;
-  sliders.appendChild(l);
-  let drag = 0;
-  const input = l.querySelector('input')!;
-  input.addEventListener('pointerdown', () => { drag = Date.now(); });
-  input.addEventListener('input', () => store.dispatch({ type: 'setInput', key, value: Number(input.value), coalesce: drag ? `drag-${key}-${drag}` : undefined }));
-  input.addEventListener('change', () => { drag = 0; });
-}
-function syncControls() {
-  const p = app().patients.A.inputs;
-  for (const key of SHOWN) {
-    const c = ALL_CONTROLS.find(x => x.key === key)!;
-    const el = sliders.querySelector<HTMLInputElement>(`[data-k="${key}"]`)!;
-    if (document.activeElement !== el) el.value = String(p[key]);
+  const app = s.app;
+  if (PATIENT_ACTIONS.has(a.type)) {
+    // reference beat for the cause → effect map: the beat just before this change
+    const coalesce = a.type === 'setInput' ? a.coalesce : undefined;
+    if (!coalesce || coalesce !== lastCoalesce) setCausalRef(live.beats[app.active]?.res ?? null);
+    lastCoalesce = coalesce;
+    live.sync(app);
   }
-  renderSliderValues();
-  renderDrugs();
-}
-/** "70 bpm", or "70 → 44 bpm" when drugs (or the baroreflex) move the value actually used. */
-function renderSliderValues() {
-  const p = app().patients.A.inputs;
-  for (const key of SHOWN) {
-    const c = ALL_CONTROLS.find(x => x.key === key)!;
-    const set = p[key], actual = beat ? beat.effect.params[key] : set;
-    const differs = Math.abs(actual - set) >= c.step / 2;
-    const el = sliders.querySelector<HTMLElement>(`[data-v="${key}"]`)!;
-    el.textContent = differs ? `${set.toFixed(c.f)} → ${actual.toFixed(c.f)} ${c.unit}` : `${set.toFixed(c.f)} ${c.unit}`;
-    el.title = differs ? 'set value → value after drugs' : '';
+  switch (a.type) {
+    case 'replace': live.reset(app); break;
+    case 'setPaused': live.setPaused(a.paused); break;
+    case 'setWarp': live.setWarp(a.warp); break;
+    case 'pin': live.pinned = simulate(a.params); break;
+    case 'clearPin': live.pinned = null; break;
+    case 'setActive': setCausalRef(null); break;
   }
-}
-
-const drugs = $('#drugs');
-function renderDrugs() {
-  const evs = app().patients.A.events;
-  drugs.innerHTML = Object.entries(ACUTE_DRUGS).map(([k, d]) => {
-    const running = evs.find(e => e.drug === k && e.mode === 'infusion' && e.tStop == null);
-    const modes = DRUG_KINETICS[k].modes;
-    return `<span>${d.short}: ` +
-      (modes.includes('bolus') ? `<button data-give="${k}" data-mode="bolus">bolus</button> ` : '') +
-      (running ? `<button data-stop="${running.id}">stop infusion</button>` : `<button data-give="${k}" data-mode="infusion">infusion</button>`) +
-      `</span>`;
-  }).join('');
-}
-drugs.addEventListener('click', e => {
-  const b = (e.target as HTMLElement).closest('button'); if (!b) return;
-  store.dispatch({ type: 'setClock', t: clock.t });
-  if (b.dataset.give) store.dispatch({ type: 'giveDrug', drug: b.dataset.give, mode: b.dataset.mode as 'bolus' | 'infusion' });
-  if (b.dataset.stop) store.dispatch({ type: 'stopDrug', id: Number(b.dataset.stop) });
-});
-
-function setPaused(p: boolean) {
-  clock = { ...clock, paused: p };
-  store.dispatch({ type: 'setPaused', paused: p });
-  $('#status').textContent = p ? '❚❚ paused' : '● live';
-}
-function stepBeat() {
-  if (!clock.paused) return;
-  const r = nextBeat(sim); sim = r.sim; beat = r.beat;
-  clock = { ...clock, t: r.beat.tStart };
-}
-function pin() {
-  if (!beat) return;
-  store.dispatch({ type: 'pin', params: beat.effect.params });
-  pinned = beat.res;
-}
-$('#pause').addEventListener('click', () => setPaused(!clock.paused));
-$('#step').addEventListener('click', stepBeat);
-$('#pin').addEventListener('click', pin);
-$<HTMLSelectElement>('#warp').value = String(clock.warp);
-$<HTMLSelectElement>('#warp').addEventListener('change', e => {
-  const w = Number((e.target as HTMLSelectElement).value) as Warp;
-  clock = { ...clock, warp: w }; store.dispatch({ type: 'setWarp', warp: w });
-});
-$('#undo').addEventListener('click', () => store.dispatch({ type: 'undo' }));
-$('#redo').addEventListener('click', () => store.dispatch({ type: 'redo' }));
-$('#copy').addEventListener('click', async () => {
-  store.dispatch({ type: 'setClock', t: clock.t });
-  const hash = encodeState(app());
-  history.replaceState(null, '', hash);
-  try { await navigator.clipboard.writeText(location.href); msg('Link copied.'); } catch { msg('Link is in the address bar.'); }
-});
-document.addEventListener('keydown', e => {
-  const tag = (e.target as HTMLElement).tagName;
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); store.dispatch({ type: e.shiftKey ? 'redo' : 'undo' }); return; }
-  if (tag === 'SELECT' || (tag === 'INPUT' && (e.target as HTMLInputElement).type !== 'range')) return;
-  if (e.key === ' ') { e.preventDefault(); setPaused(!clock.paused); }
-  else if (e.key === '.') stepBeat();
-  else if (e.key === 'b' || e.key === 'B') pin();
-});
-if (clock.paused) $('#status').textContent = '❚❚ paused';
-syncControls();
-
-/* ---------- drawing ---------- */
-function setup(c: HTMLCanvasElement) {
-  const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
-  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
-  const ctx = c.getContext('2d')!; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, r.width, r.height);
-  return { ctx, w: r.width, h: r.height };
-}
-function line(ctx: CanvasRenderingContext2D, xs: number[], ys: number[], X: (v: number) => number, Y: (v: number) => number, color: string, width = 2, dash: number[] = []) {
-  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash); ctx.beginPath();
-  xs.forEach((x, i) => (i ? ctx.lineTo(X(x), Y(ys[i])) : ctx.moveTo(X(x), Y(ys[i])))); ctx.stroke(); ctx.setLineDash([]);
-}
-function drawWave() {
-  const { ctx, w, h } = setup($('#wave'));
-  if (!beat) return;
-  const r = beat.res, tms = r.t.map(t => t * 1000), P = 40;
-  const all = [...r.p, ...r.brachial, ...(pinned ? pinned.p : [])];
-  const lo = Math.floor(Math.min(...all) / 10) * 10 - 5, hi = Math.ceil(Math.max(...all) / 10) * 10 + 5;
-  const xMax = Math.max(tms[tms.length - 1], pinned ? pinned.t[pinned.t.length - 1] * 1000 : 0);
-  const X = (v: number) => P + (w - P - 10) * v / xMax, Y = (v: number) => h - 22 - (h - 32) * (v - lo) / (hi - lo);
-  ctx.fillStyle = '#667'; ctx.font = '11px system-ui';
-  for (let v = lo; v <= hi; v += 10) { ctx.fillText(String(v), 4, Y(v) + 4); ctx.strokeStyle = '#eef0f3'; ctx.beginPath(); ctx.moveTo(P, Y(v)); ctx.lineTo(w - 10, Y(v)); ctx.stroke(); }
-  ctx.fillText('ms →', w - 40, h - 6);
-  if (pinned) line(ctx, pinned.t.map(t => t * 1000), pinned.p, X, Y, '#9aa3b2', 2, [6, 4]);
-  const p0 = r.p[0];
-  line(ctx, tms, r.pf.map(v => v - r.pf[0] + p0), X, Y, '#2a7fb8', 1.5, [6, 3]);
-  line(ctx, tms, r.pb.map(v => v - r.pb[0] + p0), X, Y, '#d1781c', 1.5, [2, 3]);
-  line(ctx, tms, r.brachial, X, Y, '#7a4fb5', 1.5);
-  line(ctx, tms, r.p, X, Y, '#1d2433', 2.6);
-  const f = beat.features;
-  const mark = (i: number | null, label: string) => {
-    if (i == null) return;
-    ctx.fillStyle = '#c0262d'; ctx.beginPath(); ctx.arc(X(tms[i]), Y(r.p[i]), 4, 0, 7); ctx.fill();
-    ctx.fillText(label, X(tms[i]) + 6, Y(r.p[i]) - 6);
-  };
-  mark(f.foot, 'foot'); mark(f.peak, 'peak'); mark(f.inflection, 'inflection'); mark(f.lateShoulder, 'late shoulder'); mark(f.notch, 'notch');
-  ctx.fillStyle = '#334';
-  ctx.fillText(`central (black) · cuff (purple) · forward (blue) · reflected (orange)${pinned ? ' · pinned (grey)' : ''} · inflection: ${f.inflection == null ? 'n/a (type C)' : `${tms[f.inflection].toFixed(0)} ms`}`, P, 14);
-}
-function drawTrend() {
-  const { ctx, w, h } = setup($('#trend'));
-  const tr = sim.trend.window();
-  if (tr.length < 2) return;
-  const t0 = tr[0].t, t1 = Math.max(tr[tr.length - 1].t, t0 + 30), P = 40;
-  const X = (t: number) => P + (w - P - 10) * (t - t0) / (t1 - t0);
-  const Y = (v: number) => h - 18 - (h - 28) * (v - 40) / (200 - 40);
-  ctx.fillStyle = '#667'; ctx.font = '11px system-ui';
-  for (let v = 40; v <= 200; v += 40) ctx.fillText(String(v), 4, Y(v) + 4);
-  // drug markers: labels stacked into rows so they never overlap
-  const rowEnds: number[] = [];
-  const evs = app().patients.A.events.filter(e => e.t0 >= t0 && e.t0 <= t1).sort((a, b) => a.t0 - b.t0);
-  for (const e of evs) {
-    const x = X(e.t0), text = `${ALL_DRUGS[e.drug].short} ${e.mode}`, tw = ctx.measureText(text).width;
-    let row = rowEnds.findIndex(end => end < x);
-    if (row < 0) { row = rowEnds.length; rowEnds.push(0); }
-    rowEnds[row] = x + 3 + tw + 6;
-    const y = 12 + row * 13;
-    ctx.strokeStyle = '#c3c8d0'; ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x, h - 18); ctx.stroke();
-    ctx.fillStyle = '#556'; ctx.fillText(text, x + 3, y);
-    if (e.tStop != null && e.tStop <= t1) {
-      ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(X(e.tStop), y - 9); ctx.lineTo(X(e.tStop), h - 18); ctx.stroke(); ctx.setLineDash([]);
-    }
+  if (s.warnings.length) toast(s.warnings.join(' · '), 'err');
+  if (a.type !== 'setClock') {
+    renderTop(); renderRail(ctx);
+    if (a.type === 'setTab') showTab(app.tab);
+    else renderBeatViews();
   }
-  ctx.fillStyle = '#667';
-  const ts = tr.map(s => s.t);
-  line(ctx, ts, tr.map(s => s.cSBP), X, Y, '#1d2433');
-  line(ctx, ts, tr.map(s => s.sbp), X, Y, '#7a4fb5');
-  line(ctx, ts, tr.map(s => s.map), X, Y, '#2a7fb8');
-  line(ctx, ts, tr.map(s => s.hr), X, Y, '#c0262d', 1.5);
-  ctx.fillText(`${Math.round((t1 - t0))} s shown`, w - 80, h - 4);
-}
-function drawKpis() {
-  if (!beat) return;
-  const m = beat.res.m, e = beat.effect;
-  const active = e.levels.filter(l => l.effect > 0.005)
-    .map(l => `${ALL_DRUGS[l.drug].short} ${(l.effect * 100).toFixed(0)} %${l.ids.length > 1 ? ` (${l.ids.length} doses)` : ''}`).join(', ') || 'none';
-  $('#kpis').innerHTML = [
-    ['Central BP', `${m.Ps.toFixed(0)}/${m.Pd.toFixed(0)}`], ['Cuff BP', `${m.bSBP.toFixed(0)}/${m.bDBP.toFixed(0)}`], ['MAP', m.map.toFixed(0)],
-    ['HR', e.params.hr.toFixed(0) + (e.reflexBpm ? ` (reflex ${e.reflexBpm.toFixed(1)})` : '')], ['AIx', m.AIx.toFixed(0) + ' %'],
-    ['Aortic PWV', m.cAoOp.toFixed(1)], ['Beat', String(beat.index)], ['Time', `${clock.t.toFixed(1)} s`], ['Drug effect (% of one full dose; max 120 %)', active]
-  ].map(([k, v]) => `<span>${k}<br><b>${v}</b></span>`).join('');
-}
+  clearTimeout(urlTimer);
+  urlTimer = window.setTimeout(() => history.replaceState(null, '', encodeState(store.get().app)), 400);
+});
 
-let lastFrame = performance.now();
-function frame(now: number) {
-  clock = tick(clock, (now - lastFrame) / 1000);
-  lastFrame = now;
-  const r = catchUp(sim, clock.t);
-  sim = r.sim;
-  if (r.beats.length) beat = r.beats[r.beats.length - 1];
-  if (r.beats.length || !beat) { drawWave(); drawTrend(); }
-  drawKpis();
-  if (r.beats.length) renderSliderValues();
+/* ---------- beats and frames ---------- */
+let dirty = true;
+live.onBeat(id => { if (id === ctx.active() || ctx.tab() === 'cmp') dirty = true; });
+
+let last = performance.now();
+function frame(now: number): void {
+  live.frame(Math.min(0.25, (now - last) / 1000));
+  last = now;
+  const id = ctx.active();
+  const mon = $<HTMLCanvasElement>('#monitor');
+  if (mon.offsetParent) {
+    drawMonitor(mon, live.recent[id], live.clock.t);
+    const b = live.beats[id];
+    if (b) $('#monReadout').textContent = `Patient ${id} · HR ${b.res.params.hr.toFixed(0)} · cuff ${b.res.m.bSBP.toFixed(0)}/${b.res.m.bDBP.toFixed(0)} · MAP ${b.res.m.map.toFixed(0)}`;
+  }
+  if (dirty) { dirty = false; renderBeatViews(); }
+  if (ctx.tab() === 'sim') tickSim(ctx, now);
   requestAnimationFrame(frame);
 }
+
+/* ---------- top bar ---------- */
+const setPaused = (p: boolean) => { ctx.syncClock(); store.dispatch({ type: 'setPaused', paused: p }); };
+const pin = () => { const b = live.beats[ctx.active()]; if (b) store.dispatch({ type: 'pin', params: b.effect.params }); };
+const stepBeat = () => { if (!live.clock.paused) setPaused(true); live.step(ctx.active()); ctx.syncClock(); dirty = true; };
+const present = () => { togglePresent(); requestAnimationFrame(renderAll); };
+
+$('.tabs').addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]'); if (b) store.dispatch({ type: 'setTab', tab: b.dataset.tab as TabId }); });
+$('#liveBtn').addEventListener('click', () => setPaused(!live.clock.paused));
+$('#stepBtn').addEventListener('click', stepBeat);
+$('#warp').addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-warp]'); if (b) store.dispatch({ type: 'setWarp', warp: Number(b.dataset.warp) as Warp }); });
+$('#undoBtn').addEventListener('click', () => store.dispatch({ type: 'undo' }));
+$('#redoBtn').addEventListener('click', () => store.dispatch({ type: 'redo' }));
+$('#pinBtn').addEventListener('click', pin);
+$('#clearPin').addEventListener('click', () => store.dispatch({ type: 'clearPin' }));
+$('#copyLink').addEventListener('click', () => void copyLink(ctx));
+$('#presentBtn').addEventListener('click', present);
+$('#themeBtn').addEventListener('click', () => { toggleTheme(); renderAll(); });
+$('#helpBtn').addEventListener('click', () => startTour());
+const menu = $('#exportMenu'), menuBtn = $('#exportBtn');
+const closeMenu = () => { menu.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); };
+menuBtn.addEventListener('click', e => { e.stopPropagation(); const o = menu.classList.toggle('open'); menuBtn.setAttribute('aria-expanded', String(o)); if (o) menu.querySelector<HTMLElement>('button')?.focus(); });
+menu.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-exp]'); if (b) { exportAs(ctx, b.dataset.exp!); closeMenu(); } });
+document.addEventListener('click', e => { if (!(e.target as HTMLElement).closest('.menu')) closeMenu(); });
+$<HTMLInputElement>('#importFile').addEventListener('change', e => {
+  const inp = e.target as HTMLInputElement, f = inp.files?.[0];
+  if (f) void importFile(ctx, f).finally(() => { inp.value = ''; closeMenu(); });
+});
+
+// any element with data-explain opens the drawer
+document.addEventListener('click', e => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-explain]');
+  if (el && !el.closest('#drawer')) ctx.explain(el.dataset.explain!);
+});
+
+/* ---------- keyboard ---------- */
+document.addEventListener('keydown', e => {
+  const t = (e.target instanceof HTMLElement ? e.target : document.body);
+  const typing = t.matches('input[type=number], input[type=text], select, textarea') || t.isContentEditable;
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === 'z') { if (typing) return; e.preventDefault(); store.dispatch({ type: e.shiftKey ? 'redo' : 'undo' }); return; }
+  if (mod && e.key.toLowerCase() === 'y') { if (typing) return; e.preventDefault(); store.dispatch({ type: 'redo' }); return; }
+  if (e.key === 'Escape') { if (tourActive()) endTour(); else if (drawerOpen()) closeDrawer(); else closeMenu(); return; }
+  if (mod || e.altKey || typing || !$('#startOverlay').hidden) return;
+  // range sliders keep arrow keys; other keys still work while a slider has focus
+  const k = e.key;
+  if (k >= '1' && k <= '7') { store.dispatch({ type: 'setTab', tab: TABS[Number(k) - 1] }); e.preventDefault(); return; }
+  switch (k) {
+    case ' ': if (t.matches('button, a, summary, [role=button]')) return; e.preventDefault(); setPaused(!live.clock.paused); break;
+    case '.': stepBeat(); break;
+    case 'b': case 'B': pin(); break;
+    case 'r': case 'R': store.dispatch({ type: 'resetPatient' }); break;
+    case 'p': case 'P': present(); break;
+    case 'e': case 'E': explainFocused(ctx); break;
+    case 'h': case 'H': case '?': startTour(); break;
+    case '[': if (ctx.tab() === 'sweep') stepSweep(ctx, -1); break;
+    case ']': if (ctx.tab() === 'sweep') stepSweep(ctx, 1); break;
+    default: return;
+  }
+});
+
+/* ---------- layout, resize ---------- */
+let resizeRaf = 0;
+const onResize = () => { cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(renderAll); };
+initLayout(onResize);
+window.addEventListener('resize', onResize);
+
+/* ---------- start ---------- */
+renderTop(); renderRail(ctx); showTab(ctx.tab());
+if (decoded.error) toast(`Link could not be used (${decoded.error}). Defaults loaded.`, 'err', 8000);
+else if (decoded.warnings.length) toast(`Link loaded with changes: ${decoded.warnings.slice(0, 3).join('; ')}`, 'err', 8000);
+if (!location.hash && !startSeen()) showStart(ctx);
 requestAnimationFrame(frame);
