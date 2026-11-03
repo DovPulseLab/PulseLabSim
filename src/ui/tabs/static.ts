@@ -1,0 +1,55 @@
+/* Validation and Methods tabs: static content, rendered once. */
+import { methodsHtml } from '../../config/methods';
+import { runValidation, type Verdict } from '../../model/validation';
+import { $ } from '../dom';
+
+const f = (v: number | null, d = 1) => v == null ? '—' : v.toFixed(d);
+const V: Record<string, Record<Verdict, string>> = {
+  formula: { pass: '<span class="pass">✓ match</span>', near: '<span class="near">≈ close</span>', fail: '<span class="fail">✗ off</span>' },
+  case: { pass: '<span class="pass">✓ match</span>', near: '<span class="near">≈</span>', fail: '<span class="fail">✗</span>' },
+  age: { pass: '<span class="pass">✓ same direction</span>', near: '<span class="near">◐ partial</span>', fail: '<span class="fail">✗ opposite</span>' },
+  drug: { pass: '<span class="pass">✓ direction</span>', near: '<span class="near">≈</span>', fail: '<span class="fail">✗</span>' },
+  mech: { pass: '<span class="pass">✓ reproduced</span>', near: '<span class="near">≈</span>', fail: '<span class="fail">✗ not reproduced</span>' }
+};
+
+let validDone = false, eqDone = false;
+
+export function renderValidation(): void {
+  if (validDone) return; validDone = true;
+  const r = runValidation();
+  $('#pane-valid').innerHTML = `
+  <div class="card prose" style="max-width:none">
+    <h2>1 · Formula checks against published numbers</h2>
+    <p>Arithmetic re-computation of values reported in the source papers, using the same equations the simulator uses.</p>
+    <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Computed</th><th>Reported</th><th>Unit</th><th></th></tr>
+    ${r.formulas.map(x => `<tr><td>${x.check}</td><td class="n">${f(x.computed, x.reported < 2 ? 2 : 1)}</td><td class="n">${x.reported}</td><td>${x.unit}</td><td>${V.formula[x.verdict]}</td></tr>`).join('')}</table></div>
+    <p class="fine">Fig. 3 does not report Ps − Pi directly; it is derived as AIx × aortic PP, which explains the small mismatch.</p>
+    <h3>Townsend et al. 2015 — pulse pressure amplification for all six clinical cases</h3>
+    <div class="table-wrap"><table class="vt"><tr><th>Case</th><th>Brachial BP</th><th>Central BP</th><th>Computed (bPP/cPP − 1)</th><th>Reported</th><th></th></tr>
+    ${r.cases.map(c => `<tr><td>${c.name}</td><td class="n">${c.brachial.join('/')}</td><td class="n">${c.central.join('/')}</td><td class="n">${c.computed.toFixed(1)} %</td><td class="n">${c.reported} %</td><td>${V.case[c.verdict]}</td></tr>`).join('')}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>2 · Model vs published age trends</h2>
+    <p>Nichols &amp; Singh 2002, Fig. 2 (healthy subjects aged 19, 42 and 83) compared with the simulator's Young (20 y), Middle-aged (45 y) and ISH (80 y) presets. The goal is the <b>direction and shape</b> of the trend; a single-reflection model will not match every absolute value.</p>
+    <div class="table-wrap"><table class="vt"><tr><th>Variable</th><th>Paper 19 y</th><th>42 y</th><th>83 y</th><th>Model 20 y</th><th>45 y</th><th>80 y</th><th>Trend</th></tr>
+    ${r.age.map(a => { const amp = a.variable.includes('Ampl'); return `<tr><td>${a.variable}</td>${a.paper.map(v => `<td class="n">${f(v, amp ? 1 : 0)}</td>`).join('')}${a.model.map(v => `<td class="n">${f(v, amp ? 2 : 0)}</td>`).join('')}<td>${V.age[a.verdict]}</td></tr>`; }).join('')}</table></div>
+    <div class="note">Known limitation: invasive Δtp in youth (332 ms) is longer than the model's, because a single effective reflection site cannot capture the distal shift of reflection in young, compliant arteries. Pulse-pressure amplification falls from youth to middle age as published, but then plateaus near 1.2 instead of reaching 1.1: the model uses one fixed upper-limb transfer function, whereas the published decline also reflects changes in aortic–brachial transmission. Use the reflection-site position slider to explore the distal shift.</div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>3 · Drug effects vs Townsend et al. 2015, Table 1</h2>
+    <p>Each long-term drug applied alone, at steady state, to the Essential-HTN (55 y) patient.</p>
+    <div class="table-wrap"><table class="vt"><tr><th>Drug</th><th>Expected central SBP</th><th>Model ΔcSBP</th><th>Expected AIx</th><th>Model ΔAIx</th><th>Model Δ cuff SBP</th><th></th></tr>
+    ${r.drugs.map(d => `<tr><td>${d.drug}</td><td>${d.expSBP}</td><td class="n">${f(d.dSBP)}</td><td>${d.expAIx}</td><td class="n">${f(d.dAIx)}</td><td class="n">${f(d.dCuffSBP)}</td><td>${V.drug[d.verdict]}</td></tr>`).join('')}</table></div>
+    <p class="fine">Nitrates should have the largest AIx effect (↓↓↓↓): model nitrate ΔAIx ${f(r.nitrateLargest.nitrateDAIx)} vs next-largest ${f(r.nitrateLargest.nextLargest)} — ${r.nitrateLargest.verdict === 'pass' ? '<span class="pass">✓ largest</span>' : '<span class="near">not the largest</span>'}.</p>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>4 · Mechanistic predictions from the papers</h2>
+    <div class="table-wrap"><table class="vt"><tr><th>Prediction</th><th>Source</th><th>Model result</th><th></th></tr>
+    ${r.mechanisms.map(m => `<tr><td>${m.prediction}</td><td>${m.source}</td><td>${m.detail}</td><td>${V.mech[m.verdict]}</td></tr>`).join('')}</table></div>
+  </div>`;
+}
+
+export function renderMethods(): void {
+  if (eqDone) return; eqDone = true;
+  $('#pane-eq').innerHTML = methodsHtml();
+}
