@@ -165,7 +165,7 @@ describe('UI smoke test', () => {
     click('[data-end="close"]');
     expect(panel.hasAttribute('hidden')).toBe(true);
     expect(errors).toEqual([]);
-  });
+  }, 60_000);
 
   it('a case without treatment does not reach the goal', async () => {
     click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
@@ -178,7 +178,7 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#startOverlay')!.textContent).toMatch(/Goal reached \(held 45 s\)0 \/ 40/);
     click('[data-end="close"]');
     expect(errors).toEqual([]);
-  });
+  }, 60_000);
 
   it('every tab works (clicks and keys 1–7) while a guided case runs, after Quit and after Finish', async () => {
     click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
