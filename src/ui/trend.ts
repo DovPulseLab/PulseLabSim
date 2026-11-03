@@ -1,4 +1,4 @@
-/* Per-beat trend plot (last 10 min): selectable series with a colour legend, hover readout,
+/* Per-beat trend plot (last 10 min): series chips (the only legend), hover readout,
    drag to zoom (double-click resets) and drug markers with stacked, non-overlapping labels. */
 import { ALL_DRUGS } from '../config/physiology';
 import type { TrendSample } from '../engine/trends';
@@ -7,24 +7,24 @@ import { col } from '../render/theme';
 import type { Ctx } from './context';
 import { $, esc } from './dom';
 
-interface TrendDef { k: keyof TrendSample; l: string; c: string; y2?: boolean; on: boolean; }
+interface TrendDef { k: keyof TrendSample; l: string; c: string; y2?: boolean; on: boolean; /** smallest axis span shown */ span: number; }
 const DEFS: TrendDef[] = [
-  { k: 'cSBP', l: 'Central SBP', c: '--trend-1', on: true },
-  { k: 'sbp', l: 'Cuff SBP', c: '--trend-2', on: true },
-  { k: 'dbp', l: 'Cuff DBP', c: '--trend-7', on: true },
-  { k: 'map', l: 'MAP', c: '--trend-3', on: true },
-  { k: 'cPP', l: 'Central PP', c: '--trend-5', on: false },
-  { k: 'bPP', l: 'Cuff PP', c: '--trend-8', on: false },
-  { k: 'hr', l: 'HR (bpm, right axis)', c: '--trend-4', y2: true, on: true },
-  { k: 'aix', l: 'AIx (%, right axis)', c: '--trend-6', y2: true, on: false },
-  { k: 'pwv', l: 'Aortic PWV (m/s, right axis)', c: '--radial', y2: true, on: false }
+  { k: 'cSBP', l: 'Central SBP', c: '--trend-1', on: true, span: 40 },
+  { k: 'sbp', l: 'Cuff SBP', c: '--trend-2', on: true, span: 40 },
+  { k: 'dbp', l: 'Cuff DBP', c: '--trend-7', on: true, span: 40 },
+  { k: 'map', l: 'MAP', c: '--trend-3', on: true, span: 40 },
+  { k: 'cPP', l: 'Central PP', c: '--trend-5', on: false, span: 40 },
+  { k: 'bPP', l: 'Cuff PP', c: '--trend-8', on: false, span: 40 },
+  { k: 'hr', l: 'HR (bpm, right axis)', c: '--trend-4', y2: true, on: true, span: 20 },
+  { k: 'aix', l: 'AIx (%, right axis)', c: '--trend-6', y2: true, on: false, span: 20 },
+  { k: 'pwv', l: 'Aortic PWV (m/s, right axis)', c: '--radial', y2: true, on: false, span: 2 }
 ];
 
 let zoom: [number, number] | null = null;
 
 export function buildTrend(ctx: Ctx): void {
   const tools = $('#trendTools');
-  tools.innerHTML = DEFS.map((d, i) => `<button class="chip" data-tr="${i}" aria-pressed="${d.on}"><i style="background:var(${d.c})"></i>${esc(d.l.replace(/ \(.*\)/, ''))}</button>`).join('') +
+  tools.innerHTML = DEFS.map((d, i) => `<button class="chip" data-tr="${i}" aria-pressed="${d.on}" title="${esc(d.l)}"><i style="background:var(${d.c})"></i>${esc(d.l.replace(/ \(.*\)/, ''))}${d.y2 ? ' <small class="muted">(right axis)</small>' : ''}</button>`).join('') +
     `<button class="btn sm" id="trendReset" hidden>Reset zoom</button>`;
   tools.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tr]');
@@ -48,8 +48,9 @@ export function renderTrend(ctx: Ctx): void {
   const events = ctx.store.get().app.patients[ctx.active()].events;
   lineChart($<HTMLCanvasElement>('#trend'), {
     series, xMin: t0, xMax: t1, xFmt: mmss, hoverX: v => `t = ${mmss(v)}`, hoverFmt: v => v.toFixed(1),
-    y2: on.some(d => d.y2) ? { color: '--ink-3' } : undefined, yLabel: 'mmHg', headroom: 0.3,
-    legend: true, ariaLabel: 'Per-beat trends over the last 10 minutes',
+    y2: on.some(d => d.y2) ? { color: '--ink-3', minSpan: Math.max(...on.filter(d => d.y2).map(d => d.span)) } : undefined,
+    yMinSpan: 40, yLabel: 'mmHg', headroom: 0.3,
+    legend: false, ariaLabel: 'Per-beat trends over the last 10 minutes',
     onZoom: r => { zoom = r; renderTrend(ctx); },
     overlay: (c, map) => {
       // drug markers; labels stacked into rows so they never overlap

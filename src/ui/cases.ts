@@ -18,7 +18,7 @@ export function openCasePicker(ctx: Ctx): void {
     <h2 id="pickTitle">Guided cases</h2>
     <p>Each case loads a patient into Patient A and gives you a goal. The goal is checked live, every beat, and must hold for a short time. Answer the questions as you go. Finish when you are ready to see your score and the teaching points.</p>
     <div class="case-list">${CASES.map((c, i) => `<button class="start-card" data-case="${c.id}"><span><b>${i + 1}. ${esc(c.title)}</b><br><span>${esc(c.summary)}</span></span><span class="btn sm">Start</span></button>`).join('')}</div>
-    <div class="start-foot"><span>Score: goal reached ${40} · goal kept ${20} · answers ${40}</span><button class="btn" id="pickClose">Close</button></div></div>`;
+    <div class="start-foot"><span>Score out of 100. Goal cases: goal reached 40 · kept 20 · answers 40. Exploration: things tried 60 · answers 40.</span><button class="btn" id="pickClose">Close</button></div></div>`;
   ov.hidden = false;
   ov.querySelector<HTMLElement>('[data-case]')!.focus();
   const close = () => { ov.hidden = true; ov.innerHTML = ''; ov.onclick = null; ov.onkeydown = null; };
@@ -63,7 +63,7 @@ export function renderCasePanel(ctx: Ctx, full = false): void {
   if (full || !el.querySelector('#caseLive')) {
     el.innerHTML = `<div class="ch"><h2><span class="eyebrow">Guided case</span>${esc(def.title)}</h2>
       <span><button class="btn sm" id="caseRestart">Restart</button> <button class="btn sm primary" id="caseFinish">Finish case</button> <button class="btn sm" id="caseQuit">Quit</button></span></div>
-      <div class="case-goal">Goal: ${esc(def.goal.text)}</div>
+      <div class="case-goal">${def.kind === 'explore' ? '' : 'Goal: '}${esc(def.goal.text)}</div>
       <div id="caseLive"></div>
       <details ${full ? 'open' : ''}><summary>Patient and hints</summary><p class="brief">${def.brief}</p><ul class="brief">${def.hints.map(h => `<li>${esc(h)}</li>`).join('')}</ul></details>
       <details open id="caseQs"><summary>Questions</summary><div id="caseQList"></div></details>`;
@@ -80,7 +80,10 @@ export function renderCasePanel(ctx: Ctx, full = false): void {
     qHtml = '';
   }
   const t = ctx.live.clock.t, h = holdFraction(def, prog, t);
-  const status = prog.reachedAt != null
+  const nDone = prog.taskDone.filter(x => x != null).length;
+  const status = def.kind === 'explore'
+    ? (prog.met ? '✓ All explored. Answer the questions, then press Finish.' : `Explored ${nDone} of ${prog.taskDone.length}. Each counts once it has been in place for ${def.goal.holdS} s.`)
+    : prog.reachedAt != null
     ? (prog.met ? '✓ Goal reached. Keep it there, answer the questions, then press Finish.' : '✓ Goal reached earlier, but not met now: bring it back (this counts toward the score).')
     : prog.met ? `Holding… ${Math.max(0, def.goal.holdS - (t - (prog.holdStart ?? t))).toFixed(0)} s to go` : `Not met yet. Must hold for ${def.goal.holdS} s.`;
   $('#caseLive').innerHTML = `<ul class="goal-parts">${prog.parts.map(p => `<li class="${p.ok ? 'ok' : ''}">${p.ok ? '✓' : '✗'} ${esc(p.label)} <span class="v">${esc(p.value)}</span></li>`).join('')}</ul>
@@ -114,8 +117,10 @@ function endCase(ctx: Ctx): void {
     <h2 id="endTitle">${esc(d.title)}: case complete</h2>
     <div class="score-big">${s.total} / 100</div>
     <div class="score-rows">
-      <div><span>Goal reached (held ${d.goal.holdS} s)</span><b>${s.reached} / 40</b></div>
-      <div><span>Goal kept after reaching it</span><b>${s.kept} / 20</b></div>
+      ${s.kind === 'explore'
+        ? `<div><span>Things explored: ${s.tasksDone} of ${s.nTasks}</span><b>${s.tasks} / 60</b></div>`
+        : `<div><span>Goal reached (held ${d.goal.holdS} s)</span><b>${s.reached} / 40</b></div>
+      <div><span>Goal kept after reaching it</span><b>${s.kept} / 20</b></div>`}
       <div><span>Questions: ${s.correct} of ${s.nQuestions} correct</span><b>${s.answers} / 40</b></div>
     </div>
     <h3>Teaching points</h3><ul>${d.teaching.map(t => `<li>${esc(t)}</li>`).join('')}</ul>

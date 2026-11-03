@@ -15,6 +15,12 @@ export interface CaseSnapshot {
 
 export interface GoalPart { label: string; ok: boolean; value: string; }
 
+export interface ExploreTask {
+  label: string;
+  check: (s: CaseSnapshot) => boolean;
+  value: (s: CaseSnapshot) => string;
+}
+
 export interface Question {
   q: string;
   options: string[];
@@ -41,12 +47,17 @@ export interface CaseDef {
   /** clinical vignette (HTML allowed) */
   brief: string;
   setup: CaseSetup;
+  /** 'goal': reach and keep one goal. 'explore': complete a list of things to try, in any order. */
+  kind: 'goal' | 'explore';
   goal: {
     text: string;
-    /** seconds of clock time the goal must hold continuously to count as reached */
+    /** seconds of clock time the goal (or each exploration task) must hold continuously */
     holdS: number;
+    /** goal cases: all parts must be ok at once. Explore cases: ignored (see tasks). */
     check: (s: CaseSnapshot) => GoalPart[];
   };
+  /** explore cases: each task is done once it has held for holdS, at any time */
+  tasks?: ExploreTask[];
   hints: string[];
   questions: Question[];
   teaching: string[];
@@ -68,9 +79,17 @@ export interface CaseProgress {
   metAfter: number;
   parts: GoalPart[];
   met: boolean;
+  /** explore cases: per task, when it started holding and when it was done */
+  taskHold: (number | null)[];
+  taskDone: (number | null)[];
   lowestMap: number;
   answers: (number | null)[];
   finished: boolean;
 }
 
-export interface Score { reached: number; kept: number; answers: number; total: number; correct: number; nQuestions: number; }
+export interface Score {
+  kind: 'goal' | 'explore';
+  /** goal cases: 40 if reached, 0–20 for keeping it; explore cases: 0–60 for tasks done */
+  reached: number; kept: number; tasks: number; tasksDone: number; nTasks: number;
+  answers: number; total: number; correct: number; nQuestions: number;
+}

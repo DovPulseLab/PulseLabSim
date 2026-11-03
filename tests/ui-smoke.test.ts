@@ -35,6 +35,19 @@ async function frames(n: number, dtMs = 50): Promise<void> {
 }
 
 const click = (sel: string) => { const el = document.querySelector<HTMLElement>(sel); if (!el) throw new Error(`missing ${sel}`); el.click(); };
+const TAB_IDS = ['sim', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'];
+/** Every tab must open by click and by keys 1–7, from every other tab. */
+async function checkAllTabs(when: string): Promise<void> {
+  const visible = () => TAB_IDS.filter(t => !document.querySelector(`#pane-${t}`)!.hasAttribute('hidden'));
+  for (const from of TAB_IDS) for (const [i, to] of TAB_IDS.entries()) {
+    click(`#tab-${from}`); await frames(2, 250);
+    expect(visible(), `${when}: click ${from}`).toEqual([from]);
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    key(String(i + 1)); await frames(2, 250);
+    expect(visible(), `${when}: key ${i + 1} from ${from}`).toEqual([to]);
+    expect(document.querySelector(`#tab-${to}`)!.getAttribute('aria-selected'), when).toBe('true');
+  }
+}
 const key = (k: string, opts: KeyboardEventInit = {}) => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...opts }));
 
 beforeAll(async () => {
@@ -165,5 +178,41 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#startOverlay')!.textContent).toMatch(/Goal reached \(held 45 s\)0 \/ 40/);
     click('[data-end="close"]');
     expect(errors).toEqual([]);
+  });
+
+  it('every tab works (clicks and keys 1–7) while a guided case runs, after Quit and after Finish', async () => {
+    click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
+    click('[data-dose="1"]'); click('[data-give="propofol"][data-mode="bolus"]'); await frames(200, 250);
+    await checkAllTabs('during case');
+    expect(document.querySelector('#casePanel')!.hasAttribute('hidden')).toBe(false);
+    click('#caseQuit'); await frames(2);
+    expect(document.querySelector('#casePanel')!.hasAttribute('hidden')).toBe(true);
+    await checkAllTabs('after Quit');
+    click('#casesBtn'); click('[data-case="bb"]'); await frames(20, 250);
+    key('2'); await frames(20, 250);
+    click('#caseFinish'); await frames(2);
+    click('[data-end="close"]'); await frames(2);
+    await checkAllTabs('after Finish');
+    expect(errors).toEqual([]);
+  }, 120_000);
+
+  it('the young athlete case is an exploration with three things to try', async () => {
+    click('#casesBtn'); click('[data-case="athlete"]'); await frames(10, 250);
+    const panel = document.querySelector('#casePanel')!;
+    expect(panel.textContent).toContain('Explored 0 of 3');
+    expect(panel.textContent).not.toContain('Goal:');
+    const cAo = document.querySelector<HTMLInputElement>('#num-cAo')!;
+    cAo.value = '9'; cAo.dispatchEvent(new Event('change', { bubbles: true }));
+    await frames(60, 250);
+    expect(panel.textContent).toContain('Explored 1 of 3');
+    click('#caseFinish'); await frames(2);
+    expect(document.querySelector('#startOverlay')!.textContent).toMatch(/Things explored: 1 of 320 \/ 60/);
+    click('[data-end="close"]');
+    expect(errors).toEqual([]);
+  });
+
+  it('the trend plot has one legend (the chips) and a sensible HR axis', async () => {
+    expect(document.querySelectorAll('#trendTools .chip').length).toBe(9);
+    expect(document.querySelector('#trendTools')!.textContent).toContain('right axis');
   });
 });

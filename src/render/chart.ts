@@ -38,7 +38,9 @@ export interface ChartConfig {
   yLabel?: string;
   xMin?: number; xMax?: number; yMin?: number; yMax?: number;
   headroom?: number;
-  y2?: { color?: string; min?: number; max?: number; label?: string };
+  /** smallest visible span of the left axis when it is auto-scaled (e.g. 40 mmHg) */
+  yMinSpan?: number;
+  y2?: { color?: string; min?: number; max?: number; label?: string; minSpan?: number };
   marks?: Mark[];
   vlines?: VLine[];
   hlines?: HLine[];
@@ -74,10 +76,22 @@ function niceStep(range: number, target: number): number {
   const n = raw / mag;
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
 }
-function ticks(lo: number, hi: number, target: number): { list: number[]; step: number } {
-  const s = niceStep(hi - lo, target), out: number[] = [];
-  for (let v = Math.ceil(lo / s) * s; v <= hi + 1e-9; v += s) out.push(+v.toFixed(10));
+export function ticks(lo: number, hi: number, target: number): { list: number[]; step: number } {
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return { list: [], step: 1 };
+  // a step below the floating-point resolution at these values would never advance
+  const s = Math.max(niceStep(hi - lo, target), Math.max(Math.abs(lo), Math.abs(hi)) * 1e-9), out: number[] = [];
+  const first = Math.ceil(lo / s);
+  for (let i = 0; i < 200; i++) { const v = (first + i) * s; if (v > hi + s * 1e-6) break; out.push(+v.toFixed(10)); }
   return { list: out, step: s };
+}
+
+/** Widen [lo, hi] about its centre to at least minSpan; near-flat data counts as flat. */
+export function spanRange(lo: number, hi: number, minSpan = 0): [number, number] {
+  const flat = Math.max(1e-9, Math.max(Math.abs(lo), Math.abs(hi)) * 1e-9);
+  const need = Math.max(minSpan, hi - lo <= flat ? 1 : 0);
+  if (hi - lo >= need) return [lo, hi];
+  const mid = (lo + hi) / 2;
+  return [mid - need / 2, mid + need / 2];
 }
 const fmtTick = (v: number, step: number) => v.toFixed(step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(step))));
 
@@ -114,7 +128,8 @@ function draw(canvas: HTMLCanvasElement): void {
     }
     for (const l of cfg.hlines ?? []) { lo = Math.min(lo, l.y); hi = Math.max(hi, l.y); }
     if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
-    const span = (hi - lo) || 1;
+    [lo, hi] = spanRange(lo, hi, cfg.yMinSpan);
+    const span = hi - lo;
     if (yMin == null) yMin = lo - span * 0.08;
     if (yMax == null) yMax = hi + span * (cfg.headroom ?? 0.14);
   }
@@ -125,7 +140,8 @@ function draw(canvas: HTMLCanvasElement): void {
     let lo = Infinity, hi = -Infinity;
     for (const s of cfg.series) if (s.y2 && !s.hidden) for (const v of s.y) if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
-    const sp = (hi - lo) || 1;
+    [lo, hi] = spanRange(lo, hi, cfg.y2.minSpan);
+    const sp = hi - lo;
     y2Min = cfg.y2.min ?? lo - sp * 0.08; y2Max = cfg.y2.max ?? hi + sp * 0.14;
     Y2 = v => pad.t + (1 - (v - y2Min) / (y2Max - y2Min)) * ph;
   }

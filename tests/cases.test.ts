@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CASES, CASE_BY_ID } from '../src/cases/defs';
-import { answer, caseSetup, finish, holdFraction, ON_BOARD_LEAD_S, score, SCORE_WEIGHTS, startProgress, stepProgress } from '../src/cases/engine';
+import { answer, caseSetup, finish, holdFraction, ON_BOARD_LEAD_S, score, SCORE_WEIGHTS, seedOf, shuffleQuestions, startProgress, stepProgress } from '../src/cases/engine';
 import type { CaseDef, CaseProgress } from '../src/cases/types';
 import { DEFAULTS, PRESETS, type Params } from '../src/config/physiology';
 import type { DrugEvent } from '../src/engine/kinetics';
@@ -64,12 +64,23 @@ describe('case definitions', () => {
 });
 
 describe('goals: not met at the start, reached with the intended strategy, failed otherwise', () => {
-  it('young athlete: stiffer aorta (PWV 7) passes; PWV 9 overshoots central SBP', () => {
-    const ok = play(CASE_BY_ID.athlete, [[5, set('cAo', 7)]], 60);
-    expect(ok.firstMet).toBe(false); expect(ok.p.reachedAt).not.toBeNull();
-    const over = play(CASE_BY_ID.athlete, [[5, set('cAo', 9)]], 60);
-    expect(over.p.reachedAt).toBeNull();
-    expect(over.p.parts.find(x => x.label.startsWith('Central'))!.ok).toBe(false);
+  it('young athlete is an exploration: each change counts once held, in any order', () => {
+    const def = CASE_BY_ID.athlete;
+    expect(def.kind).toBe('explore');
+    const none = play(def, [], 30);
+    expect(none.p.taskDone.every(x => x == null)).toBe(true);
+    expect(score(def, none.p)).toMatchObject({ kind: 'explore', tasks: 0, tasksDone: 0, nTasks: 3 });
+    const all = play(def, [[5, set('cAo', 9)], [20, set('cAo', 5.2)], [21, set('lpScale', 0.8)], [40, set('lpScale', 1.3)], [41, set('cAo', 4.5)]], 60);
+    expect(all.p.taskDone.every(x => x != null)).toBe(true);
+    expect(all.p.met).toBe(true);
+    expect(score(def, all.p).tasks).toBe(SCORE_WEIGHTS.tasks);
+    const some = play(def, [[5, set('cAo', 9)]], 30);
+    expect(some.p.taskDone.filter(x => x != null)).toHaveLength(1);
+    expect(score(def, some.p).tasks).toBe(SCORE_WEIGHTS.tasks / 3);
+  });
+  it('young athlete: a change that only lasts a moment does not count', () => {
+    const r = play(CASE_BY_ID.athlete, [[5, set('cAo', 9)], [6, set('cAo', 5.2)]], 30);
+    expect(r.p.taskDone[0]).toBeNull();
   });
   it('ISH: an NTG infusion reaches cSBP < 130 with MAP ≥ 65; doing nothing fails', () => {
     const ok = play(CASE_BY_ID.ish, [[5, give('ntg', 'infusion')]], 400);
@@ -108,7 +119,7 @@ describe('goals: not met at the start, reached with the intended strategy, faile
 
 describe('progress and scoring', () => {
   const def: CaseDef = {
-    id: 't', title: 't', summary: '', brief: '', setup: { preset: 'Default adult (45 y)' }, hints: [], teaching: ['x'],
+    id: 't', kind: 'goal', title: 't', summary: '', brief: '', setup: { preset: 'Default adult (45 y)' }, hints: [], teaching: ['x'],
     goal: { text: '', holdS: 10, check: s => [{ label: 'map', ok: s.m.map >= 90, value: '' }] },
     questions: [{ q: '', options: ['a', 'b'], correct: 1, explain: '' }, { q: '', options: ['a', 'b'], correct: 0, explain: '' }]
   };
@@ -128,7 +139,7 @@ describe('progress and scoring', () => {
   it('perfect run: 100', () => {
     let p = run([[0, 95], [10, 95], [11, 95], [12, 95]]);
     p = answer(answer(p, 0, 1), 1, 0);
-    expect(score(def, finish(p))).toMatchObject({ reached: 40, kept: 20, answers: 40, total: 100, correct: 2 });
+    expect(score(def, finish(p))).toMatchObject({ kind: 'goal', reached: 40, kept: 20, answers: 40, total: 100, correct: 2 });
   });
   it('never reached: only answers count; nothing answered: 0', () => {
     const p = run([[0, 80], [30, 80]]);
@@ -150,5 +161,37 @@ describe('progress and scoring', () => {
   });
   it('weights add up to 100', () => {
     expect(SCORE_WEIGHTS.reached + SCORE_WEIGHTS.kept + SCORE_WEIGHTS.answers).toBe(100);
+    expect(SCORE_WEIGHTS.tasks + SCORE_WEIGHTS.answers).toBe(100);
+  });
+});
+
+describe('questions: shuffled answers, short options', () => {
+  it('the correct answer is not always in the same position (overall and within each case)', () => {
+    const pos = CASES.flatMap(c => c.questions.map(q => q.correct));
+    expect(new Set(pos).size).toBeGreaterThanOrEqual(3);
+    for (const c of CASES) expect(new Set(c.questions.map(q => q.correct)).size).toBeGreaterThan(1);
+  });
+  it('the shuffle is fixed per case and keeps each correct answer with its text', () => {
+    for (const c of CASES) {
+      const again = shuffleQuestions({ ...c, questions: c.questions }, seedOf(c.id));
+      expect(shuffleQuestions(c, seedOf(c.id))).toEqual(again);       // deterministic
+      c.questions.forEach((q, i) => {
+        const s2 = again.questions[i];
+        expect([...s2.options].sort()).toEqual([...q.options].sort());
+        expect(s2.options[s2.correct]).toBe(q.options[q.correct]);
+      });
+    }
+  });
+  it('options are short and carry no explanation (that goes in the feedback)', () => {
+    for (const c of CASES) for (const q of c.questions) {
+      expect(q.explain.length).toBeGreaterThan(20);
+      for (const o of q.options) {
+        expect(o.length, `${c.id}: "${o}"`).toBeLessThanOrEqual(30);
+        expect(o, `${c.id}: "${o}"`).not.toMatch(/[:;—(]|because|does not|e\.g\./i);
+      }
+      // the correct option is not conspicuously longer than the others
+      const lens = q.options.map(o => o.length), longest = Math.max(...lens.filter((_, i) => i !== q.correct));
+      expect(lens[q.correct]).toBeLessThanOrEqual(longest + 12);
+    }
   });
 });
