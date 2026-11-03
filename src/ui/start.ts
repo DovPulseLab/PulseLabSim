@@ -5,7 +5,7 @@ import { CREDIT, DISCLAIMER } from './shell';
 
 const SEEN = 'pulselab-v2-started';
 
-export function showStart(ctx: Ctx): void {
+export function showStart(ctx: Ctx, openCases: () => void): void {
   const ov = $('#startOverlay');
   ov.innerHTML = `<div class="start" role="dialog" aria-modal="true" aria-labelledby="startTitle">
     <h2 id="startTitle">Pulse Lab Simulator</h2>
@@ -13,7 +13,7 @@ export function showStart(ctx: Ctx): void {
     <div class="disclaimer"><b>${DISCLAIMER}</b></div>
     <div class="start-cards">
       <button class="start-card" data-start="free"><b>Free explore</b><span>One patient, every control. Pin a baseline and change anything.</span></button>
-      <button class="start-card" data-start="cases" disabled><b>Guided cases</b><span>Five clinical cases with goals and questions. Coming in the next update.</span></button>
+      <button class="start-card" data-start="cases"><b>Guided cases</b><span>Five clinical cases: a goal to reach live, questions, a score and teaching points.</span></button>
       <button class="start-card" data-start="cmp"><b>Compare two patients</b><span>Patients A and B side by side, with what differs and why.</span></button>
     </div>
     <div class="start-foot"><span>${CREDIT}</span><span><label><input type="checkbox" id="startTour" checked> Show the 60-second tour</label></span></div>
@@ -21,16 +21,17 @@ export function showStart(ctx: Ctx): void {
   ov.hidden = false;
   const first = ov.querySelector<HTMLElement>('[data-start="free"]')!; first.focus();
   const close = (mode: string) => {
-    ov.hidden = true; ov.innerHTML = '';
+    ov.hidden = true; ov.innerHTML = ''; ov.onclick = null; ov.onkeydown = null; ov.onchange = null;
     try { sessionStorage.setItem(SEEN, '1'); } catch { /* private mode */ }
     if (mode === 'cmp') ctx.store.dispatch({ type: 'setTab', tab: 'cmp' });
     else ctx.store.dispatch({ type: 'setTab', tab: 'sim' });
+    if (mode === 'cases') { openCases(); return; }
     if (tourWanted) startTour();
   };
   let tourWanted = true;
-  ov.addEventListener('change', e => { if ((e.target as HTMLElement).id === 'startTour') tourWanted = (e.target as HTMLInputElement).checked; });
-  ov.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-start]'); if (b && !b.hasAttribute('disabled')) close(b.dataset.start!); });
-  ov.addEventListener('keydown', e => { if (e.key === 'Escape') close('free'); });
+  ov.onchange = e => { if ((e.target as HTMLElement).id === 'startTour') tourWanted = (e.target as HTMLInputElement).checked; };
+  ov.onclick = e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-start]'); if (b && !b.hasAttribute('disabled')) close(b.dataset.start!); };
+  ov.onkeydown = e => { if (e.key === 'Escape') close('free'); };
 }
 
 export const startSeen = (): boolean => { try { return sessionStorage.getItem(SEEN) === '1'; } catch { return false; } };
@@ -41,11 +42,12 @@ const STEPS: Step[] = [
   { sel: '#controls', text: 'Change the heart, the large arteries or the periphery here. Each change eases in over 3 beats. Number boxes and ± buttons work too.' },
   { sel: '#drugsAcute', text: 'Give a drug as a bolus or an infusion. It acts with realistic onset and offset, and repeat doses saturate.' },
   { sel: '#pinBtn', text: 'Pin a baseline (B) to overlay the current beat in grey and see ▲/▼ changes on every card.' },
+  { sel: '#casesBtn', text: 'Guided cases: five clinical scenarios with a live goal, questions, a score and teaching points.' },
   { sel: '#cards', text: 'Key measures. Click any card for its definition, formula, normal range and what moves it.' },
   { sel: '#trend', text: 'Trends over the last 10 minutes, one sample per beat. Drug markers sit on top. Drag to zoom.' },
   { sel: '.tabs', text: 'Compare two patients, learn cause and effect, sweep an input, or look at impedance. Keys 1–7. Press H any time for this tour.' }
 ];
-const STEP_MS = 8500;
+const STEP_MS = 7500;
 let tourTimer = 0, tourIdx = 0, tourT0 = 0;
 
 export function startTour(): void { tourIdx = 0; showStep(); }

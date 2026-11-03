@@ -28,6 +28,7 @@ export function buildShell(root: HTMLElement): void {
       </div>
       <button class="btn icon hide-narrow" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button class="btn icon hide-narrow" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button class="btn" id="casesBtn" title="Guided clinical cases">Cases</button>
       <button class="btn" id="pinBtn" title="Pin the current beat as a baseline (B)">Pin baseline</button>
       <button class="btn sm" id="clearPin" title="Remove the baseline" hidden>Clear</button>
       <div class="menu">
@@ -61,6 +62,7 @@ export function buildShell(root: HTMLElement): void {
   <div class="rz v rz1" data-rz="rail" tabindex="0" role="separator" aria-orientation="vertical" aria-label="Resize controls panel"></div>
 
   <main class="main" id="main">
+    <section class="case-panel" id="casePanel" aria-label="Guided case" aria-live="polite" hidden></section>
     ${TAB_LABELS.map(([id]) => `<section class="tabpane" id="pane-${id}" role="tabpanel" aria-labelledby="tab-${id}" hidden></section>`).join('')}
   </main>
   <div class="rz v rz2" data-rz="cards" tabindex="0" role="separator" aria-orientation="vertical" aria-label="Resize metric cards"></div>

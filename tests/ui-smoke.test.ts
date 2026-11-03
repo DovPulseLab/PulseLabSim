@@ -123,4 +123,47 @@ describe('UI smoke test', () => {
     expect(typeof importFile).toBe('function');
     expect(errors).toEqual([]);
   });
+
+  it('a full guided case end to end: stiff aorta before induction', async () => {
+    const { CASE_BY_ID } = await import('../src/cases/defs');
+    key('1'); click('#casesBtn'); await frames(2);
+    expect(document.querySelectorAll('[data-case]').length).toBe(5);
+    click('[data-case="induction"]'); await frames(10, 250);
+    const panel = document.querySelector('#casePanel')!;
+    expect(panel.hasAttribute('hidden')).toBe(false);
+    expect(panel.textContent).toContain('Propofol bolus given');
+    expect(document.querySelector('#clearPin')!.hasAttribute('hidden')).toBe(false);   // pre-induction baseline pinned
+    click('[data-dose="1"]');
+    click('[data-give="propofol"][data-mode="bolus"]');
+    await frames(120, 250);                                                         // 30 s
+    click('[data-dose="0.5"]');
+    click('[data-give="phe"][data-mode="infusion"]');
+    await frames(700, 250);                                                         // ~3 min
+    expect(panel.textContent).toContain('Goal reached');
+    CASE_BY_ID.induction.questions.forEach((q, qi) => click(`[data-q="${qi}"][data-o="${q.correct}"]`));
+    expect(panel.textContent).toContain('3/3 answered');
+    click('#caseFinish'); await frames(2);
+    const ov = document.querySelector('#startOverlay')!;
+    expect(ov.textContent).toContain('case complete');
+    expect(ov.textContent).toMatch(/Goal reached \(held 45 s\)40 \/ 40/);
+    expect(ov.textContent).toContain('does not change the MAP fall');
+    const total = Number(/(\d+) \/ 100/.exec(ov.querySelector('.score-big')!.textContent!)![1]);
+    expect(total).toBeGreaterThanOrEqual(95);
+    click('[data-end="close"]');
+    expect(panel.hasAttribute('hidden')).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  it('a case without treatment does not reach the goal', async () => {
+    click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
+    click('[data-dose="1"]'); click('[data-give="propofol"][data-mode="bolus"]');
+    await frames(600, 250);
+    const panel = document.querySelector('#casePanel')!;
+    expect(panel.textContent).not.toContain('Goal reached');
+    expect(panel.textContent).toMatch(/lowest MAP so far 6[0-4]/);
+    click('#caseFinish'); await frames(2);
+    expect(document.querySelector('#startOverlay')!.textContent).toMatch(/Goal reached \(held 45 s\)0 \/ 40/);
+    click('[data-end="close"]');
+    expect(errors).toEqual([]);
+  });
 });

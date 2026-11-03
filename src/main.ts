@@ -8,6 +8,7 @@ import { createStore, type Action } from './state/store';
 import { TABS, type TabId } from './state/types';
 import { decodeHash, encodeState } from './state/url';
 import { buildCards, renderCards } from './ui/cards';
+import { caseActive, caseBeat, openCasePicker, renderCasePanel } from './ui/cases';
 import type { Ctx } from './ui/context';
 import { $, $$, toast } from './ui/dom';
 import { buildDrawer, closeDrawer, drawerOpen, explainFocused, openDrawer, renderDrawer } from './ui/drawer';
@@ -53,6 +54,7 @@ const BEAT_TABS: Partial<Record<TabId, () => void>> = {
 
 /** Everything that depends on the latest beat. */
 function renderBeatViews(): void {
+  renderCasePanel(ctx);
   renderCards(ctx); renderRailBeat(ctx); renderTrend(ctx); renderDrawer(ctx);
   BEAT_TABS[ctx.tab()]?.();
 }
@@ -123,7 +125,10 @@ store.subscribe((s, a) => {
 
 /* ---------- beats and frames ---------- */
 let dirty = true;
-live.onBeat(id => { if (id === ctx.active() || ctx.tab() === 'cmp') dirty = true; });
+live.onBeat((id, b) => {
+  if (id === 'A') caseBeat(ctx, b);
+  if (id === ctx.active() || ctx.tab() === 'cmp' || (id === 'A' && caseActive())) dirty = true;
+});
 
 let last = performance.now();
 function frame(now: number): void {
@@ -154,6 +159,7 @@ $('#warp').addEventListener('click', e => { const b = (e.target as HTMLElement).
 $('#undoBtn').addEventListener('click', () => store.dispatch({ type: 'undo' }));
 $('#redoBtn').addEventListener('click', () => store.dispatch({ type: 'redo' }));
 $('#pinBtn').addEventListener('click', pin);
+$('#casesBtn').addEventListener('click', () => openCasePicker(ctx));
 $('#clearPin').addEventListener('click', () => store.dispatch({ type: 'clearPin' }));
 $('#copyLink').addEventListener('click', () => void copyLink(ctx));
 $('#presentBtn').addEventListener('click', present);
@@ -211,5 +217,5 @@ window.addEventListener('resize', onResize);
 renderTop(); renderRail(ctx); showTab(ctx.tab());
 if (decoded.error) toast(`Link could not be used (${decoded.error}). Defaults loaded.`, 'err', 8000);
 else if (decoded.warnings.length) toast(`Link loaded with changes: ${decoded.warnings.slice(0, 3).join('; ')}`, 'err', 8000);
-if (!location.hash && !startSeen()) showStart(ctx);
+if (!location.hash && !startSeen()) showStart(ctx, () => openCasePicker(ctx));
 requestAnimationFrame(frame);
