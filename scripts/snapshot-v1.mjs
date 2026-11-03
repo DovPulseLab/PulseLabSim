@@ -1,5 +1,5 @@
 // Records v1 outputs so the TypeScript port can be checked against them.
-// Loads the untouched v1 files (js/model.js, js/validation.js, js/content.js) in a sandbox.
+// Loads the untouched v1 files (legacy-v1/js/model.js, validation.js, content.js) in a sandbox.
 // Run: npm run snapshot:v1   (writes tests/fixtures/v1-snapshots.json and v1-validation.json)
 import { readFileSync, writeFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -9,9 +9,9 @@ const load = f => readFileSync(new URL(f, root), 'utf8');
 
 const ctx = vm.createContext({ Math, Object, Array, Float64Array, JSON, Number, String });
 ctx.window = ctx;
-vm.runInContext(load('js/model.js'), ctx, { filename: 'js/model.js' });
-vm.runInContext(load('js/content.js'), ctx, { filename: 'js/content.js' });
-vm.runInContext(load('js/validation.js'), ctx, { filename: 'js/validation.js' });
+vm.runInContext(load('legacy-v1/js/model.js'), ctx, { filename: 'legacy-v1/js/model.js' });
+vm.runInContext(load('legacy-v1/js/content.js'), ctx, { filename: 'legacy-v1/js/content.js' });
+vm.runInContext(load('legacy-v1/js/validation.js'), ctx, { filename: 'legacy-v1/js/validation.js' });
 const PWA = ctx.PWA;
 const CONTROLS = ctx.Content.CONTROLS;
 

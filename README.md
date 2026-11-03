@@ -1,67 +1,76 @@
 # Pulse Lab Simulator
 
-Interactive pulse-wave-analysis / PWV simulator built on the equations of
-Nichols & Edwards (2001), Nichols & Singh (2002) and Townsend et al. (2015).
-Everything runs locally in your browser — no internet, no installs.
+A browser-based educational simulator of arterial pulse wave analysis (PWA) and pulse wave
+velocity (PWV). It runs a live, beat-by-beat circulation: change the heart, the arteries or give
+a drug, and the central and brachial waveforms, the reflected wave and blood pressure respond in
+real time. Built on the equations of Nichols & Edwards (2001), Nichols & Singh (2002) and
+Townsend et al. (2015).
 
-## Launch on a Mac
+**Educational model only; not a medical device; not for diagnosis or treatment decisions.**
+Created by Dov Greenwald, 2026.
 
-**Option A — Terminal (recommended)**
+- Live site: https://dovpulselab.github.io/PulseLabSim/
+- Classic version (v1): https://dovpulselab.github.io/PulseLabSim/v1/
 
-```bash
-cd ~/Downloads/pulse-lab-simulator        # wherever you unzipped it
-bash start.command
-```
+## Run it locally
 
-Your browser opens at http://localhost:8765. Press `Ctrl+C` in Terminal to stop.
-
-**Option B — no server at all**
-
-```bash
-open ~/Downloads/pulse-lab-simulator/index.html
-```
-
-**Option C — double-click `start.command` in Finder.**
-If macOS says it is from an unidentified developer, either right-click → Open,
-or run once in Terminal:
+Needs [Node.js](https://nodejs.org) 20.19+ or 22.12+.
 
 ```bash
-xattr -d com.apple.quarantine ~/Downloads/pulse-lab-simulator/start.command
+npm install
+npm run dev          # http://localhost:5173/PulseLabSim/
 ```
+
+On a Mac you can also double-click `start.command`.
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server with live reload |
+| `npm test` | All unit tests, including the v1 regression snapshots and a headless UI test |
+| `npm run build` | Type-check, build to `dist/`, and copy v1 into `dist/v1/` |
+| `npm run preview` | Serve the built `dist/` at http://localhost:4173/PulseLabSim/ |
+| `npm run snapshot:v1` | Regenerate the v1 reference outputs from `legacy-v1/js/` |
 
 ## What's inside
 
-| Tab | Use it to |
+| Tab (key) | Use it to |
 |---|---|
-| **Compare A vs B** | Two patients side by side: overlaid central and arm waves, pressure budgets, a measure-by-measure table (B − A) and a list of what differs. Edit either patient from the switch at the top of the sidebar. |
-| **Learn** | Nine plain-language lessons with a live chart, an analogy and the equation in words; each **Try it** button loads a comparison. Glossary at the end. |
-| **Simulator** | Move sliders and add drugs; watch central/forward/reflected waves, the animated arterial tree, and every index update live. |
-| **Cause & effect** | Network of every variable; nodes light up with the direction of change after each adjustment. |
-| **Sweep** | Sweep any input across its range and plot pressures and indices against it, plus a family of waveforms. |
-| **Impedance** | Aortic input impedance spectrum (Z₀ = SVR, Zc, Z₁, first minimum) and the three components of afterload. |
-| **Validation** | Recomputes published numbers from the papers, compares age trends and drug directions, and tests mechanistic predictions. |
-| **Equations & methods** | Every equation used, the solver, assumptions and limitations, references. |
+| **Simulator** (1) | Live central waveform with forward/reflected waves, feature points and shaded augmentation; arterial-tree animation, arm and flow plots, pressure budget, all indices |
+| **Compare A vs B** (2) | Two patients on one clock: overlay, B − A difference, and the top 3 inputs that explain the central SBP difference |
+| **Learn** (3) | Nine lessons with live figures, a glossary, and a cause → effect map that pulses as inputs change |
+| **Sweep** (4) | One input across its range at 6 or 12 points: waveforms and any index vs the input (`[` `]` step) |
+| **Impedance** (5) | Input impedance modulus and phase, Zc, Z₁ and the first minimum vs 1/(2·Δtp) |
+| **Validation** (6) | Published numbers recomputed, age trends, drug directions and mechanistic checks |
+| **Methods** (7) | Every equation, the live engine and drug methods, illustrative drug values, limitations |
 
-## Presentation tips
+Also: drugs as bolus or infusion events with onset/offset (13 drugs), guided cases with live goals
+and scoring, pin baseline (`B`), undo/redo, shareable links (Copy link), exports (PNG, CSV, JSON),
+Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour (`H`).
 
-- **Pin baseline** (or press `B`) stores the current state; every chart, KPI and table then shows the change.
-- **Present** (or press `P`) enlarges the type for a projector; the ◐ button switches light/dark.
-- **Export** saves the central waveform (PNG), the waveforms and metrics (CSV) and the parameters (JSON).
-- Hover any slider label, KPI or metric name for a definition and its source.
-
-## Files
+## Project layout
 
 ```
-index.html        page layout
-css/style.css     styling (light & dark themes)
-js/model.js       physics engine (transmission-line + Windkessel, FFT solver)
-js/charts.js      canvas charting
-js/schematic.js   animated arterial tree
-js/causal.js      cause → effect network
-js/content.js     slider/metric definitions, equations text
-js/lessons.js     Learn tab lessons and glossary
-js/validation.js  checks against the published papers
-js/app.js         app controller: patients, compare, sweep, impedance, export
+index.html            v2 entry page
+src/config/           all constants: physiology, presets, drugs, kinetics, citations; content
+src/model/            haemodynamic model (pure): solver, indices, impedance, features, validation
+src/engine/           beat clock, transitions, drug kinetics, trend buffer (pure)
+src/state/            store with undo/redo, URL hash, JSON import/export (pure)
+src/cases/            guided cases, goal checks and scoring (pure)
+src/render/           canvas charts and theming
+src/ui/               layout shell, rail, tabs, drawer, start screen, cases UI
+tests/                unit tests and fixtures (v1 snapshots)
+legacy-v1/            the original v1 site, unchanged (published at /v1/)
+scripts/              v1 snapshot generator, v1 copy step for the build
+.github/workflows/    test, build and deploy to GitHub Pages
 ```
 
-To change a preset or a drug effect, edit `PRESETS` or `DRUGS` near the end of `js/model.js`.
+To change a preset, drug effect or time constant, edit `src/config/physiology.ts`. Drug magnitudes
+are illustrative teaching values and are listed on the Methods tab.
+
+## Deployment
+
+`.github/workflows/deploy.yml` runs the tests and the build on every pull request into `main`,
+and on every push to `main` it also deploys `dist/` to GitHub Pages.
+
+One-time setup: in the repository's **Settings → Pages → Build and deployment**, set
+**Source** to **GitHub Actions**.

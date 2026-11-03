@@ -1,12 +1,12 @@
 {
   "name": "pulse-lab-simulator",
-  "version": "2.0.0-dev",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Educational arterial pulse wave analysis / PWV simulator (v2)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/copy-v1.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
