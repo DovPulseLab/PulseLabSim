@@ -8,7 +8,10 @@ const NS = 'http://www.w3.org/2000/svg';
 const COLX = [14, 300, 598, 880], COLW = [210, 222, 210, 210];
 const RH = 46, TOP = 44;
 /** Cascade timing: an edge takes DRAW_MS to draw; a node lights when its first incoming edge arrives. */
-const DRAW_MS = 420, HOLD_MS = 60;
+const DRAW_MS = 420;
+/** A changed node whose causes have not (yet) crossed the change threshold waits this long for an
+    arrow before lighting on its own; the sensitive LV-load indices often move first. */
+const HOLD_MS = 2500;
 const pos = (c: number, r: number) => ({ x: COLX[c], y: TOP + r * RH, w: COLW[c], h: 38 });
 
 export class CausalMap {
@@ -104,7 +107,7 @@ export class CausalMap {
           for (const E of this.edges) if (E.b === n.id && E.start != null) arrive = Math.min(arrive, E.start + DRAW_MS);
           if (arrive <= now) this.lit[n.id] = now;
           else if (arrive < Infinity || this.changedSince[n.id] != null) busy = true;
-          // a changed node none of whose sources changed would never light: light it after a beat
+          // a changed node none of whose sources changed would never light: light it after HOLD_MS
           if (arrive === Infinity && this.edges.every(E => E.b !== n.id || !dirs[E.a]) && now - (this.changedSince[n.id] ?? now) > HOLD_MS) this.lit[n.id] = now;
         }
         if (this.lit[n.id] != null) { const g = this.nodes[n.id].inner; g.classList.remove('pulse'); void g.getBoundingClientRect(); g.classList.add('pulse'); }
