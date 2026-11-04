@@ -10,7 +10,7 @@ const RH = 46, TOP = 44, STAGGER_MS = 260;
 const pos = (c: number, r: number) => ({ x: COLX[c], y: TOP + r * RH, w: COLW[c], h: 38 });
 
 export class CausalMap {
-  private nodes: Record<string, { g: SVGGElement; rect: SVGRectElement; val: SVGTextElement; del: SVGTextElement }> = {};
+  private nodes: Record<string, { g: SVGGElement; inner: SVGGElement; rect: SVGRectElement; val: SVGTextElement; del: SVGTextElement }> = {};
   private edges: { a: string; b: string; p: SVGPathElement }[] = [];
   private depth = causalDepth();
   private lastSig = '';
@@ -37,7 +37,7 @@ export class CausalMap {
       let d: string;
       if (byId[a].c === byId[b].c) { const x = A.x + A.w, y1 = A.y + A.h / 2, y2 = B.y + B.h / 2; d = `M${x} ${y1} C ${x + 34} ${y1}, ${x + 34} ${y2}, ${x + 2} ${y2}`; }
       else { const x1 = A.x + A.w, y1 = A.y + A.h / 2, x2 = B.x - 2, y2 = B.y + B.h / 2, mx = (x1 + x2) / 2; d = `M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`; }
-      const p = mk<SVGPathElement>('path', { d, fill: 'none', stroke: 'var(--line)', 'stroke-width': 1.3, 'marker-end': 'url(#arr-n)', 'stroke-dasharray': '60 0' }, gE);
+      const p = mk<SVGPathElement>('path', { d, fill: 'none', stroke: 'var(--line)', 'stroke-width': 1.3, 'marker-end': 'url(#arr-n)', pathLength: 100 }, gE);
       this.edges.push({ a, b, p });
     }
     const M = pos(byId[FEEDBACK_EDGE[0]].c, byId[FEEDBACK_EDGE[0]].r), Ca = pos(byId[FEEDBACK_EDGE[1]].c, byId[FEEDBACK_EDGE[1]].r);
@@ -46,13 +46,17 @@ export class CausalMap {
     const lab = mk('text', { x: (M.x + Ca.x + Ca.w) / 2 + 10, y: Math.min(M.y, Ca.y) - 14, 'font-size': 10.5, fill: 'var(--ink-3)', 'text-anchor': 'middle' }); lab.textContent = 'passive feedback: MAP → aortic stiffness';
     for (const n of NODES) {
       const P = pos(n.c, n.r);
-      const g = mk<SVGGElement>('g', { transform: `translate(${P.x} ${P.y})`, style: 'cursor:pointer;transform-box:fill-box;transform-origin:center', tabindex: 0, role: 'button', 'aria-label': n.l });
-      const rect = mk<SVGRectElement>('rect', { width: P.w, height: P.h, rx: 8, fill: 'var(--panel)', stroke: 'var(--line)', 'stroke-width': 1.3, class: 'node-rect' }, g);
-      mk('text', { x: 10, y: 15, 'font-size': 11.5, fill: 'var(--ink-2)', 'font-weight': 550 }, g).textContent = n.l;
-      const val = mk<SVGTextElement>('text', { x: 10, y: 31, 'font-size': 12.5, fill: 'var(--ink)', 'font-family': 'ui-monospace, Menlo, monospace' }, g);
-      const del = mk<SVGTextElement>('text', { x: P.w - 10, y: 31, 'font-size': 12, 'text-anchor': 'end', 'font-weight': 650, 'font-family': 'ui-monospace, Menlo, monospace' }, g);
+      // The outer <g> carries the position via the SVG transform attribute. The pulse animation
+      // (a CSS transform: scale) runs on the inner <g>: a CSS transform on the outer group would
+      // override the translate and drop the node at the SVG origin (top-left corner).
+      const g = mk<SVGGElement>('g', { transform: `translate(${P.x} ${P.y})`, style: 'cursor:pointer', tabindex: 0, role: 'button', 'aria-label': n.l });
+      const inner = mk<SVGGElement>('g', { style: 'transform-box:fill-box;transform-origin:center' }, g);
+      const rect = mk<SVGRectElement>('rect', { width: P.w, height: P.h, rx: 8, fill: 'var(--panel)', stroke: 'var(--line)', 'stroke-width': 1.3, class: 'node-rect' }, inner);
+      mk('text', { x: 10, y: 15, 'font-size': 11.5, fill: 'var(--ink-2)', 'font-weight': 550 }, inner).textContent = n.l;
+      const val = mk<SVGTextElement>('text', { x: 10, y: 31, 'font-size': 12.5, fill: 'var(--ink)', 'font-family': 'ui-monospace, Menlo, monospace' }, inner);
+      const del = mk<SVGTextElement>('text', { x: P.w - 10, y: 31, 'font-size': 12, 'text-anchor': 'end', 'font-weight': 650, 'font-family': 'ui-monospace, Menlo, monospace' }, inner);
       if (onNode) { g.addEventListener('click', () => onNode(n.id)); g.addEventListener('keydown', e => { if (e.key === 'Enter') onNode(n.id); }); }
-      this.nodes[n.id] = { g, rect, val, del };
+      this.nodes[n.id] = { g, inner, rect, val, del };
     }
   }
 
@@ -80,8 +84,8 @@ export class CausalMap {
     this.lastSig = sig;
     for (const n of NODES) {
       const e = this.nodes[n.id];
-      if (restart) { e.g.classList.remove('pulse'); void e.g.getBoundingClientRect(); }
-      if (dirs[n.id] && restart) { e.g.style.animationDelay = `${(this.depth[n.id] ?? 0) * STAGGER_MS}ms`; e.g.classList.add('pulse'); }
+      if (restart) { e.inner.classList.remove('pulse'); void e.inner.getBoundingClientRect(); }
+      if (dirs[n.id] && restart) { e.inner.style.animationDelay = `${(this.depth[n.id] ?? 0) * STAGGER_MS}ms`; e.inner.classList.add('pulse'); }
     }
     for (const E of this.edges) {
       const on = dirs[E.a] !== 0 && dirs[E.b] !== 0;
@@ -91,8 +95,9 @@ export class CausalMap {
       E.p.setAttribute('marker-end', on ? `url(#arr-${c})` : 'url(#arr-n)');
       if (restart) {
         E.p.classList.remove('edge-on'); void E.p.getBoundingClientRect();
-        if (on) { E.p.setAttribute('stroke-dasharray', '60'); E.p.style.animationDelay = `${(this.depth[E.a] ?? 0) * STAGGER_MS}ms`; E.p.classList.add('edge-on'); }
-        else E.p.setAttribute('stroke-dasharray', '60 0');
+        // pathLength=100 normalises every curve, so one 100-unit dash spans the full edge and the
+        // draw-on animation (dashoffset 100 → 0) ends on a solid line, whatever the edge's length.
+        if (on) { E.p.style.animationDelay = `${(this.depth[E.a] ?? 0) * STAGGER_MS}ms`; E.p.classList.add('edge-on'); }
       }
     }
   }
