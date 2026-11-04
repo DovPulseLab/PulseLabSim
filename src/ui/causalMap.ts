@@ -11,7 +11,7 @@ const pos = (c: number, r: number) => ({ x: COLX[c], y: TOP + r * RH, w: COLW[c]
 
 export class CausalMap {
   private nodes: Record<string, { g: SVGGElement; inner: SVGGElement; rect: SVGRectElement; val: SVGTextElement; del: SVGTextElement }> = {};
-  private edges: { a: string; b: string; p: SVGPathElement }[] = [];
+  private edges: { a: string; b: string; p: SVGPathElement; anim?: Animation; drawn: boolean }[] = [];
   private depth = causalDepth();
   private lastSig = '';
 
@@ -37,8 +37,8 @@ export class CausalMap {
       let d: string;
       if (byId[a].c === byId[b].c) { const x = A.x + A.w, y1 = A.y + A.h / 2, y2 = B.y + B.h / 2; d = `M${x} ${y1} C ${x + 34} ${y1}, ${x + 34} ${y2}, ${x + 2} ${y2}`; }
       else { const x1 = A.x + A.w, y1 = A.y + A.h / 2, x2 = B.x - 2, y2 = B.y + B.h / 2, mx = (x1 + x2) / 2; d = `M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`; }
-      const p = mk<SVGPathElement>('path', { d, fill: 'none', stroke: 'var(--line)', 'stroke-width': 1.3, 'marker-end': 'url(#arr-n)', pathLength: 100 }, gE);
-      this.edges.push({ a, b, p });
+      const p = mk<SVGPathElement>('path', { d, fill: 'none', stroke: 'var(--line)', 'stroke-width': 1.3, 'marker-end': 'url(#arr-n)' }, gE);
+      this.edges.push({ a, b, p, drawn: true });
     }
     const M = pos(byId[FEEDBACK_EDGE[0]].c, byId[FEEDBACK_EDGE[0]].r), Ca = pos(byId[FEEDBACK_EDGE[1]].c, byId[FEEDBACK_EDGE[1]].r);
     const fb = mk<SVGPathElement>('path', { d: `M${M.x + 40} ${M.y} C ${M.x + 20} ${M.y - 30}, ${Ca.x + Ca.w + 40} ${Ca.y - 40}, ${Ca.x + Ca.w - 30} ${Ca.y}`, fill: 'none', stroke: 'var(--ink-3)', 'stroke-width': 1.2, 'stroke-dasharray': '4 3', 'marker-end': 'url(#arr-n)', opacity: 0.8 }, gE);
@@ -92,13 +92,36 @@ export class CausalMap {
       const c = dirs[E.b] > 0 ? 'up' : 'dn';
       E.p.setAttribute('stroke', on ? `var(--${c === 'up' ? 'up' : 'down'})` : 'var(--line)');
       E.p.setAttribute('stroke-width', on ? '2.2' : '1.3');
-      E.p.setAttribute('marker-end', on ? `url(#arr-${c})` : 'url(#arr-n)');
       if (restart) {
-        E.p.classList.remove('edge-on'); void E.p.getBoundingClientRect();
-        // pathLength=100 normalises every curve, so one 100-unit dash spans the full edge and the
-        // draw-on animation (dashoffset 100 → 0) ends on a solid line, whatever the edge's length.
-        if (on) { E.p.style.animationDelay = `${(this.depth[E.a] ?? 0) * STAGGER_MS}ms`; E.p.classList.add('edge-on'); }
+        E.anim?.cancel(); E.anim = undefined;
+        E.p.style.strokeDasharray = ''; E.p.style.strokeDashoffset = '';
+        E.drawn = true;
+        if (on) this.drawOn(E, (this.depth[E.a] ?? 0) * STAGGER_MS);
       }
+      // the arrowhead appears only once the line has reached it, so the edge reads cause → effect
+      E.p.setAttribute('marker-end', on ? (E.drawn ? `url(#arr-${c})` : 'none') : 'url(#arr-n)');
     }
+  }
+
+  /** Draw an edge from its cause end to its effect end. Uses the path's measured length in px
+      (not pathLength, which Safari applies inconsistently to stroke-dashoffset). */
+  private drawOn(E: { p: SVGPathElement; anim?: Animation; drawn: boolean; b: string }, delay: number): void {
+    let L = 0;
+    try { L = E.p.getTotalLength(); } catch { /* not laid out */ }
+    if (!(L > 0) || typeof E.p.animate !== 'function') return;
+    E.drawn = false;
+    E.p.style.strokeDasharray = `${L} ${L}`;
+    E.p.style.strokeDashoffset = `${L}`;
+    const anim = E.p.animate([{ strokeDashoffset: L, opacity: 0.25 }, { strokeDashoffset: 0, opacity: 1 }],
+      { duration: 700, delay, easing: 'ease-out', fill: 'forwards' });
+    E.anim = anim;
+    anim.onfinish = () => {
+      if (E.anim !== anim) return;
+      anim.cancel(); E.anim = undefined;
+      E.p.style.strokeDasharray = ''; E.p.style.strokeDashoffset = '';
+      E.drawn = true;
+      const up = E.p.getAttribute('stroke') === 'var(--up)';
+      if (E.p.getAttribute('stroke') !== 'var(--line)') E.p.setAttribute('marker-end', `url(#arr-${up ? 'up' : 'dn'})`);
+    };
   }
 }

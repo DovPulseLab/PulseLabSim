@@ -204,8 +204,6 @@ canvas { display: block; width: 100%; height: 100%; }
 .causal .node-rect { transition: stroke .2s, fill .2s; }
 .causal .pulse { animation: nodepulse .9s ease-out both; }
 @keyframes nodepulse { 0% { transform: scale(1); } 35% { transform: scale(1.06); } 100% { transform: scale(1); } }
-.causal .edge-on { stroke-dasharray: 100 100; animation: edgeflow 1s ease-out both; }
-@keyframes edgeflow { 0% { stroke-dashoffset: 100; opacity: .2; } 100% { stroke-dashoffset: 0; opacity: 1; } }
 
 /* ---------- tables ---------- */
 .mtable { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 4px 24px; }
