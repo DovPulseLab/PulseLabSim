@@ -11,13 +11,18 @@ const RH = 46, TOP = 44;
     c × COL_MS, and each arrow draws from its cause's column time to its effect's column time.
     Arrows within one column (e.g. MAP → central SBP) take SAME_COL_MS. */
 const COL_MS = 750, SAME_COL_MS = 350;
+/** How long to wait for an input to move before sweeping from whatever did change. */
+const WAIT_MS = 1500;
 const pos = (c: number, r: number) => ({ x: COLX[c], y: TOP + r * RH, w: COLW[c], h: 38 });
 
 export class CausalMap {
   private nodes: Record<string, { g: SVGGElement; inner: SVGGElement; rect: SVGRectElement; val: SVGTextElement; del: SVGTextElement }> = {};
   private edges: { a: string; b: string; p: SVGPathElement; len: number; start: number | null; end: number }[] = [];
   private col: Record<string, number> = Object.fromEntries(NODES.map(n => [n.id, n.c]));
-  private t0: number | null = null;                       // start of the current sweep (first visible change)
+  private t0: number | null = null;
+  private sweepSince = 0;
+  private pendingRef: BeatResult | null = null;
+  private pendingSince = 0;                       // start of the current sweep (first visible change)
   private lit: Record<string, number | null> = {};        // time the node lights (null = not scheduled)
   private lastRef: BeatResult | null = null;
   private last: { res: BeatResult; ref: BeatResult | null } | null = null;
@@ -68,14 +73,29 @@ export class CausalMap {
     }
   }
 
+  private startSweep(ref: BeatResult | null, now: number): void {
+    this.lastRef = ref; this.t0 = null; this.sweepSince = now;
+    for (const n of NODES) { this.lit[n.id] = null; this.nodes[n.id].inner.classList.remove('pulse'); }
+    for (const E of this.edges) E.start = null;
+  }
+
   /** res: current beat; ref: beat before the last change (null = no comparison). */
   update(res: BeatResult, ref: BeatResult | null): void {
-    this.last = { res, ref };
+    this.last = { res, ref };            // the caller's ref, so the next frame re-checks for movement
     const now = performance.now();
-    if (ref !== this.lastRef) {          // a new change (or "Clear changes"): start a fresh sweep
-      this.lastRef = ref; this.t0 = null;
-      for (const n of NODES) { this.lit[n.id] = null; this.nodes[n.id].inner.classList.remove('pulse'); }
-      for (const E of this.edges) E.start = null;
+    if (ref !== this.lastRef) {
+      // A new change. Its inputs ramp in, so for a moment no input differs from the new reference:
+      // keep showing the previous sweep until an input visibly moves, instead of blanking the map.
+      // "Clear changes" (ref = null) clears at once.
+      const r0 = ref;
+      const moved = r0 != null && NODES.some(n => n.c === 0 && (() => {
+        const v0 = n.v(r0), dv = n.v(res) - v0;
+        return Math.abs(dv) / Math.max(Math.abs(v0), n.abs ? 5 : 1e-9) > 0.004;
+      })());
+      if (this.pendingRef !== ref) { this.pendingRef = ref; this.pendingSince = now; }
+      // (a change that moves no input, e.g. a drug acting further along, starts after WAIT_MS anyway)
+      if (ref != null && this.lastRef != null && !moved && now - this.pendingSince < WAIT_MS) ref = this.lastRef;
+      else this.startSweep(ref, now);
     }
     const colAt = (id: string) => (this.t0 ?? now) + this.col[id] * COL_MS;
     const dirs: Record<string, number> = {}, dvs: Record<string, number> = {};
@@ -89,11 +109,12 @@ export class CausalMap {
         dvs[n.id] = dv;
       }
       dirs[n.id] = dir;
-      // the inputs ramp in, so the sweep starts when the first value actually moves, not at the click
-      if (dir && this.t0 == null) this.t0 = now;
+      // the inputs ramp in, so the sweep starts when the first input actually moves, not at the click
+      // (a sensitive downstream index can twitch first; it waits for its column's turn)
+      if (dir && this.t0 == null && (n.c === 0 || now - this.sweepSince > WAIT_MS)) this.t0 = now;
       // schedule the node for its column's turn; one that only starts changing later lights a
       // little after it starts, so its incoming arrows still visibly arrive first
-      if (dir && this.lit[n.id] == null) this.lit[n.id] = Math.max(colAt(n.id), n.c === 0 ? now : now + SAME_COL_MS);
+      if (dir && this.lit[n.id] == null && this.t0 != null) this.lit[n.id] = Math.max(colAt(n.id), n.c === 0 ? now : now + SAME_COL_MS);
       if (!dir) this.lit[n.id] = null;
     }
     let busy = false;
