@@ -1,27 +1,24 @@
 /* Cause → effect map (ported from v1 js/causal.js). Nodes show live values; after an input
    or drug change, nodes pulse ▲/▼ with the direction of change as the inputs ramp, and the
    arrows between changed nodes light up in causal order (inputs first). */
-import { CAUSAL_COLUMNS, EDGES, FEEDBACK_EDGE, NODES, causalDepth } from '../config/causal';
+import { CAUSAL_COLUMNS, EDGES, FEEDBACK_EDGE, NODES } from '../config/causal';
 import type { BeatResult } from '../model/solve';
 
 const NS = 'http://www.w3.org/2000/svg';
 const COLX = [14, 300, 598, 880], COLW = [210, 222, 210, 210];
 const RH = 46, TOP = 44;
-/** Cascade timing: an edge takes DRAW_MS to draw; a node lights when its first incoming edge arrives. */
-const DRAW_MS = 420;
-/** A changed node whose causes have not (yet) crossed the change threshold waits this long for an
-    arrow before lighting on its own; the sensitive LV-load indices often move first. */
-const HOLD_MS = 2500;
+/** After a change the effect sweeps across the map one column at a time: column c lights at
+    c × COL_MS, and each arrow draws from its cause's column time to its effect's column time.
+    Arrows within one column (e.g. MAP → central SBP) take SAME_COL_MS. */
+const COL_MS = 750, SAME_COL_MS = 350;
 const pos = (c: number, r: number) => ({ x: COLX[c], y: TOP + r * RH, w: COLW[c], h: 38 });
 
 export class CausalMap {
   private nodes: Record<string, { g: SVGGElement; inner: SVGGElement; rect: SVGRectElement; val: SVGTextElement; del: SVGTextElement }> = {};
-  private edges: { a: string; b: string; p: SVGPathElement; len: number; onSince: number | null; start: number | null }[] = [];
-  private depth = causalDepth();
-  /** nodes sorted so every edge's source comes before its target */
-  private order = [...NODES].sort((x, y) => (this.depth[x.id] ?? 0) - (this.depth[y.id] ?? 0));
-  private lit: Record<string, number | null> = {};       // time the node lit up (null = not lit)
-  private changedSince: Record<string, number | null> = {};
+  private edges: { a: string; b: string; p: SVGPathElement; len: number; start: number | null; end: number }[] = [];
+  private col: Record<string, number> = Object.fromEntries(NODES.map(n => [n.id, n.c]));
+  private t0: number | null = null;                       // start of the current sweep (first visible change)
+  private lit: Record<string, number | null> = {};        // time the node lights (null = not scheduled)
   private lastRef: BeatResult | null = null;
   private last: { res: BeatResult; ref: BeatResult | null } | null = null;
   private raf = 0;
@@ -49,7 +46,7 @@ export class CausalMap {
       if (byId[a].c === byId[b].c) { const x = A.x + A.w, y1 = A.y + A.h / 2, y2 = B.y + B.h / 2; d = `M${x} ${y1} C ${x + 34} ${y1}, ${x + 34} ${y2}, ${x + 2} ${y2}`; }
       else { const x1 = A.x + A.w, y1 = A.y + A.h / 2, x2 = B.x - 2, y2 = B.y + B.h / 2, mx = (x1 + x2) / 2; d = `M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`; }
       const p = mk<SVGPathElement>('path', { d, fill: 'none', stroke: 'var(--line)', 'stroke-width': 1.3, 'marker-end': 'url(#arr-n)' }, gE);
-      this.edges.push({ a, b, p, len: 0, onSince: null, start: null });
+      this.edges.push({ a, b, p, len: 0, start: null, end: 0 });
     }
     const M = pos(byId[FEEDBACK_EDGE[0]].c, byId[FEEDBACK_EDGE[0]].r), Ca = pos(byId[FEEDBACK_EDGE[1]].c, byId[FEEDBACK_EDGE[1]].r);
     const fb = mk<SVGPathElement>('path', { d: `M${M.x + 40} ${M.y} C ${M.x + 20} ${M.y - 30}, ${Ca.x + Ca.w + 40} ${Ca.y - 40}, ${Ca.x + Ca.w - 30} ${Ca.y}`, fill: 'none', stroke: 'var(--ink-3)', 'stroke-width': 1.2, 'stroke-dasharray': '4 3', 'marker-end': 'url(#arr-n)', opacity: 0.8 }, gE);
@@ -71,17 +68,16 @@ export class CausalMap {
     }
   }
 
-  /** res: current beat; ref: beat before the last change (null = no comparison).
-      After a change the effect spreads left to right: changed inputs light first, each arrow
-      draws from cause to effect, and a node lights (and pulses) when an arrow reaches it. */
+  /** res: current beat; ref: beat before the last change (null = no comparison). */
   update(res: BeatResult, ref: BeatResult | null): void {
     this.last = { res, ref };
     const now = performance.now();
-    if (ref !== this.lastRef) {          // a new change (or "Clear changes"): start a fresh cascade
-      this.lastRef = ref;
-      for (const n of NODES) { this.lit[n.id] = null; this.changedSince[n.id] = null; this.nodes[n.id].inner.classList.remove('pulse'); }
-      for (const E of this.edges) { E.onSince = null; E.start = null; }
+    if (ref !== this.lastRef) {          // a new change (or "Clear changes"): start a fresh sweep
+      this.lastRef = ref; this.t0 = null;
+      for (const n of NODES) { this.lit[n.id] = null; this.nodes[n.id].inner.classList.remove('pulse'); }
+      for (const E of this.edges) E.start = null;
     }
+    const colAt = (id: string) => (this.t0 ?? now) + this.col[id] * COL_MS;
     const dirs: Record<string, number> = {}, dvs: Record<string, number> = {};
     for (const n of NODES) {
       const e = this.nodes[n.id], v = n.v(res);
@@ -93,35 +89,28 @@ export class CausalMap {
         dvs[n.id] = dv;
       }
       dirs[n.id] = dir;
-      if (dir && this.changedSince[n.id] == null) this.changedSince[n.id] = now;
-      if (!dir) { this.changedSince[n.id] = null; this.lit[n.id] = null; }
+      // the inputs ramp in, so the sweep starts when the first value actually moves, not at the click
+      if (dir && this.t0 == null) this.t0 = now;
+      // schedule the node for its column's turn; one that only starts changing later lights a
+      // little after it starts, so its incoming arrows still visibly arrive first
+      if (dir && this.lit[n.id] == null) this.lit[n.id] = Math.max(colAt(n.id), n.c === 0 ? now : now + SAME_COL_MS);
+      if (!dir) this.lit[n.id] = null;
     }
-    // walk in causal order: inputs light as soon as they change; an edge starts drawing once its
-    // source is lit; a node lights when the first of its incoming edges has finished drawing
     let busy = false;
-    for (const n of this.order) {
-      if (dirs[n.id] && this.lit[n.id] == null) {
-        if ((this.depth[n.id] ?? 0) === 0) this.lit[n.id] = now;
-        else {
-          let arrive = Infinity;
-          for (const E of this.edges) if (E.b === n.id && E.start != null) arrive = Math.min(arrive, E.start + DRAW_MS);
-          if (arrive <= now) this.lit[n.id] = now;
-          else if (arrive < Infinity || this.changedSince[n.id] != null) busy = true;
-          // a changed node none of whose sources changed would never light: light it after HOLD_MS
-          if (arrive === Infinity && this.edges.every(E => E.b !== n.id || !dirs[E.a]) && now - (this.changedSince[n.id] ?? now) > HOLD_MS) this.lit[n.id] = now;
-        }
-        if (this.lit[n.id] != null) { const g = this.nodes[n.id].inner; g.classList.remove('pulse'); void g.getBoundingClientRect(); g.classList.add('pulse'); }
-      }
-      for (const E of this.edges) {
-        if (E.a !== n.id) continue;
-        const on = !!dirs[E.a] && !!dirs[E.b];
-        if (!on) { E.onSince = null; E.start = null; continue; }
-        if (E.onSince == null) E.onSince = now;
-        if (E.start == null && this.lit[E.a] != null) E.start = now;
+    for (const E of this.edges) {
+      const on = !!dirs[E.a] && !!dirs[E.b];
+      if (!on) { E.start = null; continue; }
+      if (E.start == null) {
+        const la = this.lit[E.a]!, lb = this.lit[E.b]!;
+        E.start = la; E.end = lb > la ? lb : la + SAME_COL_MS;
       }
     }
     for (const n of NODES) {
-      const e = this.nodes[n.id], shown = this.lit[n.id] != null, dir = shown ? dirs[n.id] : 0, dv = dvs[n.id] ?? 0;
+      const e = this.nodes[n.id], at = this.lit[n.id], shown = at != null && now >= at;
+      if (at != null && !shown) busy = true;
+      const dir = shown ? dirs[n.id] : 0, dv = dvs[n.id] ?? 0;
+      if (shown && !e.inner.classList.contains('pulse')) e.inner.classList.add('pulse');
+      if (!shown) e.inner.classList.remove('pulse');
       e.del.textContent = dir ? `${dir > 0 ? '▲ +' : '▼ '}${Math.abs(dv) >= 1000 ? dv.toFixed(0) : dv.toFixed(n.f)}` : '';
       e.del.setAttribute('fill', dir > 0 ? 'var(--up)' : 'var(--down)');
       e.rect.setAttribute('stroke', dir > 0 ? 'var(--up)' : dir < 0 ? 'var(--down)' : 'var(--line)');
@@ -130,19 +119,20 @@ export class CausalMap {
     }
     for (const E of this.edges) {
       const c = dirs[E.b] > 0 ? 'up' : 'down';
-      if (E.start == null) {
+      if (E.start == null || now < E.start) {
+        if (E.start != null) busy = true;
         E.p.setAttribute('stroke', 'var(--line)'); E.p.setAttribute('stroke-width', '1.3'); E.p.setAttribute('marker-end', 'url(#arr-n)');
         E.p.style.strokeDasharray = ''; E.p.style.strokeDashoffset = ''; E.p.style.opacity = '';
         continue;
       }
-      const t = Math.min(1, (now - E.start) / DRAW_MS), k = 1 - (1 - t) * (1 - t);   // ease-out
+      const t = Math.min(1, (now - E.start) / Math.max(1, E.end - E.start));
       if (!(E.len > 0)) { try { E.len = E.p.getTotalLength(); } catch { E.len = 0; } }
       E.p.setAttribute('stroke', `var(--${c})`); E.p.setAttribute('stroke-width', '2.2');
       if (t < 1 && E.len > 0) {
         busy = true;
         // a coloured dash the length of the path, slid in from the cause end
-        E.p.style.strokeDasharray = `${E.len} ${E.len}`; E.p.style.strokeDashoffset = `${E.len * (1 - k)}`;
-        E.p.style.opacity = String(0.35 + 0.65 * k);
+        E.p.style.strokeDasharray = `${E.len} ${E.len}`; E.p.style.strokeDashoffset = `${E.len * (1 - t)}`;
+        E.p.style.opacity = '';
         E.p.setAttribute('marker-end', 'none');            // arrowhead appears when the line arrives
       } else {
         E.p.style.strokeDasharray = ''; E.p.style.strokeDashoffset = ''; E.p.style.opacity = '';
