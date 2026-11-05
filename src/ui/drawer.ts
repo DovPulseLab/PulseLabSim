@@ -2,7 +2,7 @@
    the current value for the patient being edited. */
 import { explainFor } from '../config/explain';
 import { METRIC_BY_KEY, type MetricKey } from '../config/metrics';
-import { ALL_CONTROLS } from '../config/physiology';
+import { ALL_CONTROLS, controlText } from '../config/physiology';
 import type { Ctx } from './context';
 import { $, esc, fmt } from './dom';
 
@@ -49,8 +49,9 @@ export function renderDrawer(ctx: Ctx): void {
   const ctl = ALL_CONTROLS.find(c => c.key === id);
   let text = `Patient ${ctx.active()}: `;
   if (ctl) {
-    const set = ctx.store.get().app.patients[ctx.active()].inputs[ctl.key], act = beat.effect.params[ctl.key];
-    text += Math.abs(set - act) >= ctl.step / 2 ? `set ${set.toFixed(ctl.f)} → ${act.toFixed(ctl.f)} ${ctl.unit} after drugs` : `${set.toFixed(ctl.f)} ${ctl.unit}`;
+    const ins = ctx.store.get().app.patients[ctx.active()].inputs, eff = beat.effect.params;
+    const set = controlText(ctl, ins[ctl.key], ins), act = controlText(ctl, eff[ctl.key], eff);
+    text += set !== act ? `set ${set} → ${act} after drugs` : set;
   } else if (id in m) {
     const meta = METRIC_BY_KEY[id as MetricKey], v = m[id as MetricKey];
     text += typeof v === 'number' ? `${fmt(v, meta?.f ?? 1)} ${meta?.u ?? ''}` : String(v);

@@ -1,6 +1,7 @@
 /* Validation and Methods tabs: static content, rendered once. */
 import { methodsHtml } from '../../config/methods';
 import { runValidation, type Verdict } from '../../model/validation';
+import { runStudyValidation, type StudyCheck } from '../../model/validationStudy';
 import { $ } from '../dom';
 
 const f = (v: number | null, d = 1) => v == null ? '—' : v.toFixed(d);
@@ -9,14 +10,16 @@ const V: Record<string, Record<Verdict, string>> = {
   case: { pass: '<span class="pass">✓ match</span>', near: '<span class="near">≈</span>', fail: '<span class="fail">✗</span>' },
   age: { pass: '<span class="pass">✓ same direction</span>', near: '<span class="near">◐ partial</span>', fail: '<span class="fail">✗ opposite</span>' },
   drug: { pass: '<span class="pass">✓ direction</span>', near: '<span class="near">≈</span>', fail: '<span class="fail">✗</span>' },
-  mech: { pass: '<span class="pass">✓ reproduced</span>', near: '<span class="near">≈</span>', fail: '<span class="fail">✗ not reproduced</span>' }
+  mech: { pass: '<span class="pass">✓ reproduced</span>', near: '<span class="near">≈</span>', fail: '<span class="fail">✗ not reproduced</span>' },
+  study: { pass: '<span class="pass">✓ in range</span>', near: '<span class="near">≈ near</span>', fail: '<span class="fail">✗ outside</span>' }
 };
+const checkRows = (cs: StudyCheck[]) => cs.map(c => `<tr><td>${c.what}${c.fitted ? ' <span class="muted">(fitted)</span>' : ''}</td><td class="n">${c.model}</td><td>${c.reference}</td><td>${c.source}</td><td>${c.fitted ? '<span class="muted">target</span>' : V.study[c.verdict]}</td></tr>`).join('');
 
 let validDone = false, eqDone = false;
 
 export function renderValidation(): void {
   if (validDone) return; validDone = true;
-  const r = runValidation();
+  const r = runValidation(), s5 = runStudyValidation();
   $('#pane-valid').innerHTML = `
   <div class="card prose" style="max-width:none">
     <h2>1 · Formula checks against published numbers</h2>
@@ -46,6 +49,16 @@ export function renderValidation(): void {
     <h2>4 · Mechanistic predictions from the papers</h2>
     <div class="table-wrap"><table class="vt"><tr><th>Prediction</th><th>Source</th><th>Model result</th><th></th></tr>
     ${r.mechanisms.map(m => `<tr><td>${m.prediction}</td><td>${m.source}</td><td>${m.detail}</td><td>${V.mech[m.verdict]}</td></tr>`).join('')}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>5 · Healthy study profiles vs reference data (v2.1)</h2>
+    <p>Each profile is calibrated from sex, age, height and weight (aortic diameter, aortic PWV, stroke volume; see Methods §9). Two inputs were then fitted: SVR to central SBP and Γ to AIx, marked <i>fitted</i>. Every other row is a model prediction compared with healthy-adult data it was not fitted to. "Near" means just outside the reference range.</p>
+    ${s5.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows(p.checks)}</table></div>`).join('')}
+    <div class="note">Known limitations, also listed in Methods: amplification is too high in the 65- and 80-year-old profiles (one fixed arm transfer function), and the zero-asymptote decay τ is longer than the invasive mean in the young profiles. Use these profiles for trends and comparisons between groups, and enter each subject's own height, weight, heart rate and measured values where you have them.</div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>6 · Heart rate to 180 bpm and diastolic decay (v2.1)</h2>
+    <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows([...s5.heartRate, ...s5.decay])}</table></div>
   </div>`;
 }
 

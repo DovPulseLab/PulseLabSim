@@ -86,8 +86,30 @@ export function methodsHtml(): string {
   <li><b>Impedance at 0 Hz</b>: v1's impedance chart showed |Z(0)| below SVR (reflection scaling was applied at 0 Hz too). v2 computes impedance from the beat, so Z(0) = SVR. Pressures were never affected.</li>
 </ul>
 
-<h3>9 · Assumptions &amp; limitations</h3>
+<h3>9 · Patient calibration and healthy study profiles (v2.1)</h3>
+<p>Changing <b>sex, age, height or weight</b> recalculates three inputs from healthy reference data. The other inputs keep their values, and any slider can still be moved by hand afterwards.</p>
+<div class="eq">BSA = 0.007184 × weight<sup>0.425</sup> × height<sup>0.725</sup><span class="src">Du Bois 1916</span></div>
+<div class="eq">log₁₀ D<sub>AA</sub>(mm) = a + b·log₁₀(age) + c·BSA &nbsp; men a 1.033, b 0.188, c 0.070; women 1.001, 0.177, 0.086<span class="src">Campens 2014, Table 2 (leading edge, end-diastole)</span></div>
+<div class="eq">aortic PWV = mean carotid–femoral PWV of the age decade, interpolated: 6.2 · 6.5 · 7.2 · 8.3 · 10.3 · 10.9 m/s (&lt;30 … ≥70 y)<span class="src">RVASC 2010, Table 4 normal values</span></div>
+<div class="eq">SV = SV/BSA (by sex and age decile) × 0.70 × BSA<span class="src">Maceira 2006, Tables 2–3</span></div>
+<p>The 0.70 factor brings CMR stroke volume (which runs higher than Doppler or thermodilution stroke volume) to the model's flow level: v1's default 45-year-old man ejects 72 mL with BSA 1.90 m², 0.70 × Maceira's 54 mL/m². The age and sex differences come from the source unchanged. No sex term is used for PWV because the collaboration found the adjusted difference under 0.1 m/s. Age and weight act only through this calibration; sex also selects the women's Weissler line.</p>
+<p>The eight <b>healthy study profiles</b> (men and women at 25, 45, 65 and 80 y; heart rate 70 bpm; ejection 300 ms; typical healthy-weight height and weight) are calibrated as above, and then two inputs are fitted per profile: arteriolar radius (SVR) so that central SBP equals the mean of Herbert et al. 2014's normal population for that sex and decade, and reflection coefficient Γ so that AIx equals Janner et al. 2010's reference equation for that sex, age, heart rate and height. Everything else is a prediction, compared with reference data on the Validation tab.</p>
+
+<h3>10 · Ejection duration and heart rate up to 180 bpm (v2.1)</h3>
+<div class="eq">LVET = Weissler(HR, sex) × setting; men 413 − 1.7·HR, women 418 − 1.6·HR ms; then 150 ms ≤ LVET ≤ 0.6 × cycle<span class="src">Weissler 1968</span></div>
+<p>The slider shows LVET in milliseconds and starts at 300 ms. The value stored is the setting (0.8–1.2 × Weissler), so ejection still shortens as heart rate rises; changing sex keeps the milliseconds you set. Weissler's regression was derived and validated from about 50 to 150 bpm. At 180 bpm it would give 107 ms, so the model holds ejection at its 150 ms floor; treat values above 150 bpm as extrapolation. The heart is a flow source, so raising heart rate with stroke volume unchanged raises cardiac output and MAP in proportion. In real tachycardia stroke volume usually falls, so lower SV to match the scenario you are modelling.</p>
+
+<h3>11 · Diastolic decay (v2.1)</h3>
+<p>The pressure fall after aortic-valve closure is fitted over the last two-thirds of diastole (which leaves out the incisura and early reflected-wave oscillation; decay-time method, Liu 1986).</p>
+<div class="eq">P(t) = P₀·e<sup>−t/τ</sup> &nbsp;(asymptote 0 mmHg; least squares on ln P)<span class="src">two-element Windkessel; invasive τ ≈ 1.37 ± 0.31 s, Chemla 2017</span></div>
+<div class="eq">P(t) = P∞ + A·e<sup>−t/τ</sup> &nbsp;(asymptote fitted)<span class="src">invasive τ ≈ 0.44 ± 0.11 s, P∞ ≈ 58 ± 8 mmHg, Yamakado 2018</span></div>
+<div class="eq">decay rate = (P at start of window − end-diastolic P) / window duration &nbsp;[mmHg/s]</div>
+<p>Both time constants are reported because published values depend heavily on whether the asymptote is fixed at zero. Compare the fitted τ with the Windkessel prediction RC = SVR × C shown alongside. The dashed grey curve on the central-pressure chart is the zero-asymptote fit.</p>
+
+<h3>12 · Assumptions &amp; limitations</h3>
 <ul>
+  <li>Study profiles: pulse-pressure amplification (cuff − central SBP) is about right at 25–45 y but too high at 65–80 y (≈ 13–15 vs 6–8 mmHg; Herbert 2014), because the model uses one fixed upper-limb transfer function. At 65–80 y cuff DBP is ≈ 60–63 mmHg and cuff SBP ≈ 128–132 mmHg.</li>
+  <li>Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote).</li>
   <li>Single effective reflection site; the real tree has distributed reflections. Absolute Δtp values in youth are shorter than some invasive reports — trends, not absolute numbers, are the point.</li>
   <li>The heart is a flow source: stroke volume does not change with afterload, and changes with filling time only through the illustrative rule above for acute drugs. Moving the HR slider by hand, or a long-term v1 drug that slows HR, lowers MAP in proportion.</li>
   <li>MAP = CO × SVR, so aortic stiffness changes pulse pressure and central systolic pressure but not MAP or its percentage fall with a vasodilator such as propofol. The model has no mechanism by which a stiff aorta worsens hypotension.</li>
@@ -96,6 +118,6 @@ export function methodsHtml(): string {
   <li>Reflection magnitude depends heavily on the separation method; compare directions, not absolute values.</li>
 </ul>
 
-<h3>References</h3>
+<h3>13 · References</h3>
 <ol>${Object.values(CITATIONS).map(c => `<li>${c}</li>`).join('')}</ol>`;
 }

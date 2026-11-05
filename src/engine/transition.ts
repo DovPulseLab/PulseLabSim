@@ -27,9 +27,14 @@ export function rampValue(r: Ramp, beat: number): number {
  * Start ramps for every input whose target differs from the current value.
  * current: inputs used on the last generated beat (beat index lastBeat).
  */
+/** Inputs that switch at once instead of easing: sex is male or female, never between, and
+ *  age and weight only describe the patient (they act through calibration, not the beat). */
+const STEP_KEYS: ReadonlySet<ParamKey> = new Set<ParamKey>(['sex', 'age', 'weight']);
+
 export function retarget(ramps: Ramps, current: Params, targets: Params, lastBeat: number, beats: number = ENGINE.rampBeats): Ramps {
   const next: Ramps = { ...ramps };
   for (const key of Object.keys(targets) as ParamKey[]) {
+    if (STEP_KEYS.has(key)) { delete next[key]; continue; }
     const existing = next[key];
     const goal = existing ? existing.to : current[key];
     if (targets[key] === goal) continue;

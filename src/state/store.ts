@@ -1,10 +1,11 @@
 /* Single app state with subscribe/emit and undo/redo for input changes and drug events.
    The reducer is pure; createStore wraps it. */
-import { ALL_DRUGS, DEFAULTS, DRUG_KINETICS, PRESETS, type DrugMode, type Params, type ParamKey } from '../config/physiology';
+import { ALL_DRUGS, DEFAULTS, DRUG_KINETICS, PRESETS, weisslerMs, type DrugMode, type Params, type ParamKey } from '../config/physiology';
 import type { Warp } from '../engine/clock';
 import type { DrugEvent } from '../engine/kinetics';
 import { newHistory, record, redo, undo, type History } from './history';
 import { checkInput } from './inputs';
+import { applyCalibration, DEMOGRAPHIC_KEYS } from '../model/calibrate';
 import { defaultState, newPatient, type AppState, type PatientId, type PatientState, type TabId } from './types';
 
 export type Action =
@@ -44,12 +45,25 @@ function updateActive(s: AppState, fn: (p: PatientState) => PatientState): AppSt
   return { ...s, patients: { ...s.patients, [s.active]: fn(s.patients[s.active]) } };
 }
 
+/** Set one input. Sex, age, height or weight recalibrate aortic diameter, aortic PWV and
+ *  stroke volume (src/model/calibrate.ts); a sex change keeps the ejection time in ms. */
+export function withInput(inputs: Params, key: ParamKey, value: number): Params {
+  if (inputs[key] === value) return inputs;
+  let next: Params = { ...inputs, [key]: value };
+  if (key === 'sex') {
+    const ms = inputs.etScale * weisslerMs(inputs.hr, inputs.sex);
+    next.etScale = checkInput('etScale', Number((ms / weisslerMs(next.hr, next.sex)).toFixed(6))).value;
+  }
+  if ((DEMOGRAPHIC_KEYS as readonly string[]).includes(key)) next = applyCalibration(next);
+  return next;
+}
+
 /** Apply one action to the app state (no history). */
 export function reduceApp(s: AppState, a: Action): { app: AppState; warnings: string[] } {
   switch (a.type) {
     case 'setInput': {
       const r = checkInput(a.key, a.value);
-      return { app: updateActive(s, p => ({ ...p, inputs: { ...p.inputs, [a.key]: r.value } })), warnings: r.warning ? [r.warning] : [] };
+      return { app: updateActive(s, p => ({ ...p, inputs: withInput(p.inputs, a.key, r.value) })), warnings: r.warning ? [r.warning] : [] };
     }
     case 'loadPreset': {
       if (!(a.preset in PRESETS)) return { app: s, warnings: [`Unknown profile "${a.preset}"`] };

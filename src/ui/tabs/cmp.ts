@@ -1,6 +1,6 @@
 /* Compare A vs B: two patients on one clock. Overlay, B − A difference plot, "what differs"
    (top 3 inputs by contribution to Δ central SBP, one at a time), measures and inputs tables. */
-import { ALL_CONTROLS, ALL_DRUGS, type Params } from '../../config/physiology';
+import { ALL_CONTROLS, ALL_DRUGS, controlText, type Params } from '../../config/physiology';
 import { sbpContributions, type Contribution } from '../../model/contrib';
 import type { BeatResult } from '../../model/solve';
 import { lineChart, type Series } from '../../render/chart';
@@ -123,7 +123,7 @@ export function renderCmp(ctx: Ctx): void {
   const unit = (k: string) => ALL_CONTROLS.find(x => x.key === k)!;
   $('#cmpDiffers').innerHTML = c.items.length
     ? `<p class="muted" style="margin:0">Central SBP: A ${A.m.Ps.toFixed(0)} → B ${B.m.Ps.toFixed(0)} mmHg (${c.total >= 0 ? '+' : ''}${c.total.toFixed(1)}). Each input changed from A's value to B's on its own:</p>
-      <ol>${c.items.slice(0, 3).map(it => { const u = unit(it.key); return `<li><b>${esc(it.label)}</b> ${it.a.toFixed(u.f)} → ${it.b.toFixed(u.f)} ${u.unit}: <span class="d ${it.dSBP >= 0 ? 'up' : 'dn'}">${it.dSBP >= 0 ? '▲ +' : '▼ '}${it.dSBP.toFixed(1)} mmHg</span></li>`; }).join('')}</ol>
+      <ol>${c.items.slice(0, 3).map(it => { const u = unit(it.key); return `<li><b>${esc(it.label)}</b> ${esc(controlText(u, it.a, eA))} → ${esc(controlText(u, it.b, eB))}: <span class="d ${it.dSBP >= 0 ? 'up' : 'dn'}">${it.dSBP >= 0 ? '▲ +' : '▼ '}${it.dSBP.toFixed(1)} mmHg</span></li>`; }).join('')}</ol>
       ${c.items.length > 3 ? `<p class="fine">${c.items.length - 3} more input${c.items.length > 4 ? 's' : ''} differ. One-at-a-time effects need not add up to the total, because inputs interact.</p>` : '<p class="fine">One-at-a-time effects need not add up to the total, because inputs interact.</p>'}`
     : '<p class="muted">The two patients have identical inputs after drugs. Change Patient B in the rail, or load a lesson scenario from the Learn tab.</p>';
 
@@ -131,7 +131,7 @@ export function renderCmp(ctx: Ctx): void {
   const dd = [drugText(ctx, 'A'), drugText(ctx, 'B')];
   $('#cmpInputs').innerHTML = (diffs.length || dd[0] !== dd[1])
     ? `<div class="table-wrap"><table class="ct"><thead><tr><th>Input (after drugs)</th><th class="A">A</th><th class="B">B</th></tr></thead><tbody>` +
-      diffs.map(k => `<tr><td>${k.label} <span class="muted">${k.unit}</span></td><td class="mono">${eA[k.key].toFixed(k.f)}</td><td class="mono">${eB[k.key].toFixed(k.f)}</td></tr>`).join('') +
+      diffs.map(k => `<tr><td>${k.label}</td><td class="mono">${esc(controlText(k, eA[k.key], eA))}</td><td class="mono">${esc(controlText(k, eB[k.key], eB))}</td></tr>`).join('') +
       `<tr><td>Drugs</td><td>${esc(dd[0])}</td><td>${esc(dd[1])}</td></tr></tbody></table></div>`
     : '<p class="muted">No differences.</p>';
 }

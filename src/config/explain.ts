@@ -47,9 +47,14 @@ const EXTRA: Record<string, Extra> = {
   ctot: { formula: 'C ≈ V_eff × (D/2.8)² / (ρ c²)', normal: '≈ 1–2 mL/mmHg', node: 'comp', cite: C.McDonald },
   svpp: { formula: 'SV / PP', normal: '> 1.1 mL/mmHg', node: 'comp', cite: C.T2015b },
   tau: { formula: 'τ = SVR × C', normal: '≈ 1–2 s', node: 'comp', cite: C.McDonald },
+  tauFit: { formula: 'least-squares fit of ln P = ln P0 − t/τ over the last ⅔ of diastole', normal: '≈ 1.4 ± 0.3 s with a 0 mmHg asymptote (invasive, Chemla 2017); ≈ 0.3–0.45 s if the asymptote is fitted freely', node: 'comp', cite: C.Chemla2017 },
+  decayRate: { formula: '(P at start of window − end-diastolic P) / window duration', normal: '≈ 30–70 mmHg/s at rest (model, healthy profiles)', node: 'comp', cite: C.Chemla2017 },
+  decayFall: { formula: 'P at start of window − end-diastolic P', normal: '—', node: 'comp', cite: C.Chemla2017 },
+  tauFree: { formula: 'least squares of P = P∞ + A·e^(−t/τ), P∞ searched in 0.05 mmHg steps', normal: '≈ 0.44 ± 0.11 s (Yamakado 2018, normal subjects 20–80 y)', node: 'comp', cite: C.Yamakado2018 },
+  pInf: { formula: 'asymptote of the three-parameter fit', normal: '≈ 58 ± 8 mmHg (Yamakado 2018)', node: 'comp', cite: C.Yamakado2018 },
   cAoOp: { formula: 'c = c₀ × (1 + 0.006 × (MAP − 93))', normal: '< 10 m/s', node: 'cao', cite: C.NE2001 },
   ep: { formula: 'Ep ≈ 2 ρ c²', normal: '—', node: 'cao', cite: C.NE2001 },
-  et: { formula: 'LVET = (413 − 1.7·HR) ms × multiplier', normal: '≈ 280–330 ms', node: 'et', cite: C.McDonald },
+  et: { formula: 'LVET = (413 − 1.7·HR) ms [men] or (418 − 1.6·HR) ms [women] × setting; 150 ms ≤ LVET ≤ 0.6 × cycle', normal: '≈ 280–330 ms at 60–75 bpm', node: 'et', cite: C.Weissler1968 },
   tti: { formula: '∫ systole P dt', normal: '—', node: 'sevr', cite: C.NE2001 },
   dpti: { formula: '∫ diastole (P − LVEDP) dt', normal: '—', node: 'sevr', cite: C.NE2001 },
   sevr: { formula: 'SEVR = DPTI / TTI × 100', normal: '> 130 %', node: 'sevr', cite: C.NE2001 },
@@ -58,8 +63,9 @@ const EXTRA: Record<string, Extra> = {
 };
 
 const SLIDER_NORMAL: Partial<Record<ParamKey, string>> = {
-  hr: '60–100 bpm at rest', sv: '60–100 mL', etScale: '1.0 (Weissler)', radius: '100 % (SVR ≈ 1 470 dyn·s·cm⁻⁵)',
-  cAo: '5–10 m/s (rises with age)', diam: '2.5–3.5 cm', cMus: '8–10 m/s', gamma: '0.3–0.6', lpScale: '0.9–1.3', height: 'any'
+  hr: '60–100 bpm at rest (Weissler ejection line validated 50–150 bpm)', sv: '60–100 mL', etScale: '≈ 300 ms at 70 bpm (1.0 × Weissler = 294 ms in men, 306 ms in women)', radius: '100 % (SVR ≈ 1 470 dyn·s·cm⁻⁵)',
+  cAo: '5–10 m/s (rises with age; RVASC 2010 normal values)', diam: '2.5–3.5 cm (Campens 2014 by sex, age and BSA)', cMus: '8–10 m/s', gamma: '0.3–0.6', lpScale: '0.9–1.3', height: 'any',
+  sex: 'male or female', age: '18–95 y', weight: 'any (BSA by Du Bois)'
 };
 
 const CURVES: ExplainEntry[] = [
@@ -86,7 +92,7 @@ function build(): Map<string, ExplainEntry> {
     }).map(d => d.short);
     out.set(c.key, {
       id: c.key, title: `${c.label}${c.unit ? ` (${c.unit})` : ''} — input`, definition: c.tip,
-      formula: `slider ${c.min}–${c.max}, step ${c.step}`, normal: SLIDER_NORMAL[c.key] ?? '—',
+      formula: c.kind === 'toggle' ? (c.options ?? []).join(' / ') : c.view ? `shown in ${c.view.unit}; stored as ${c.min}–${c.max} ${c.unit}` : `slider ${c.min}–${c.max}, step ${c.step}`, normal: SLIDER_NORMAL[c.key] ?? '—',
       movedBy: drugs.length ? drugs.map(d => `drug: ${d}`) : ['set directly (no drug changes it)'],
       cite: C.NE2001
     });

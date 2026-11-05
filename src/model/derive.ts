@@ -29,8 +29,9 @@ export interface Derived {
   coupling: FixedPointResult;  // MAP ↔ PWV iteration result
 }
 
-/** Weissler LVET in seconds. */
-export const weisslerLVET = (hr: number): number => (MODEL.lvetA - MODEL.lvetB * hr) / 1000;
+/** Weissler LVET in seconds (men by default; sex = 1 uses the women's regression). */
+export const weisslerLVET = (hr: number, sex = 0): number =>
+  (sex === 1 ? MODEL.lvetAF - MODEL.lvetBF * hr : MODEL.lvetA - MODEL.lvetB * hr) / 1000;
 
 /** Operating PWVs at a given MAP (passive pressure dependence, Nichols). */
 export function operatingPWV(p: Params, map: number): { cAoOp: number; cMusOp: number } {
@@ -44,7 +45,7 @@ export function operatingPWV(p: Params, map: number): { cAoOp: number; cMusOp: n
 export function derive(p: Params, couplingOpts: FixedPointOptions = {}): Derived {
   const { RHO, MMHG } = PHYS;
   const T = 60 / p.hr;
-  const etW = weisslerLVET(p.hr);
+  const etW = weisslerLVET(p.hr, p.sex);
   const ET = Math.min(Math.max(etW * p.etScale, MODEL.etMin), MODEL.etMaxFrac * T);
   const svr = p.svrRef / Math.pow(p.radius / 100, 4);   // Poiseuille r⁻⁴
   const qMean = p.sv / T;

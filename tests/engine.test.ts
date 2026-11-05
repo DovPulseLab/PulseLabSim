@@ -106,7 +106,7 @@ describe('drug kinetics', () => {
   });
   it('clamps inputs to the slider ranges', () => {
     const t = 1e6;
-    const base = { ...DEFAULTS, hr: 125 };
+    const base = { ...DEFAULTS, hr: 175 };
     const r = applyDrugEffects(base, [ev({ drug: 'dobutamine', dose: 2 })], t);
     expect(r.params.hr).toBe(ALL_CONTROLS.find(c => c.key === 'hr')!.max);
     expect(r.clamped).toContain('hr');
@@ -158,8 +158,8 @@ describe('trend ring buffer', () => {
   });
   it('holds 10 minutes and wraps after that', () => {
     const tb = new TrendBuffer();
-    const sample = (t: number) => ({ t, hr: 130, sbp: 0, dbp: 0, map: 0, pp: 0, cSBP: 0, cDBP: 0, cPP: 0, bPP: 0, aix: 0, pwv: 0 });
-    for (let t = 0; t < 900; t += 60 / 130) tb.push(sample(t));   // 15 min at the fastest HR
+    const sample = (t: number) => ({ t, hr: 180, sbp: 0, dbp: 0, map: 0, pp: 0, cSBP: 0, cDBP: 0, cPP: 0, bPP: 0, aix: 0, pwv: 0 });
+    for (let t = 0; t < 900; t += 60 / 180) tb.push(sample(t));   // 15 min at the fastest HR
     expect(tb.length).toBeLessThanOrEqual(TREND_CAPACITY);
     const w = tb.window();
     expect(w[w.length - 1].t - w[0].t).toBeLessThanOrEqual(600);

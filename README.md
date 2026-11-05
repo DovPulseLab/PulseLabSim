@@ -47,6 +47,18 @@ Also: drugs as bolus or infusion events with onset/offset (13 drugs), guided cas
 and scoring, pin baseline (`B`), undo/redo, shareable links (Copy link), exports (PNG, CSV, JSON),
 Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour (`H`).
 
+### New in v2.1
+
+- **Patient inputs**: sex, age, height and weight. Changing any of them recalculates aortic
+  diameter (Campens 2014), aortic PWV (Reference Values for Arterial Stiffness Collaboration 2010)
+  and stroke volume (Maceira 2006); the sliders can still be adjusted afterwards.
+- **Eight healthy study profiles**: men and women at 25, 45, 65 and 80 y, fitted to central SBP
+  (Herbert 2014) and AIx (Janner 2010) and checked against other reference data on the Validation tab.
+- **Ejection duration in ms**, starting at 300 ms and following heart rate (sex-specific Weissler lines).
+- **Heart rate up to 180 bpm** (Weissler is extrapolated above 150 bpm; see Methods).
+- **Diastolic decay**: fitted time constant τ (asymptote 0 and asymptote fitted), the asymptote P∞,
+  and the mean decay rate in mmHg/s, with the fitted curve drawn on the central-pressure chart.
+
 ## Project layout
 
 ```

@@ -51,12 +51,24 @@ export const METRICS: { g: string; items: Metric[] }[] = [
     { k: 'zcDyn', l: 'Characteristic impedance Zc', u: 'dyn·s·cm⁻⁵', f: 0, tip: 'Zc = ρc/A. Index of proximal aortic stiffness; sets the forward wave for a given flow.' },
     { k: 'ctot', l: 'Total arterial compliance', u: 'mL/mmHg', f: 2, tip: 'C ≈ V / ρc² (Bramwell–Hill). Governs diastolic decay.' },
     { k: 'svpp', l: 'SV / PP', u: 'mL/mmHg', f: 2, tip: 'Simple clinical surrogate of compliance.' },
-    { k: 'tau', l: 'Diastolic time constant RC', u: 's', f: 2, tip: 'τ = SVR × C. Shorter τ = faster diastolic run-off = lower DBP.' },
+    { k: 'tau', l: 'Windkessel time constant RC', u: 's', f: 2, tip: 'τ = SVR × C, the decay time constant the two-element Windkessel predicts. Shorter τ = faster diastolic run-off = lower DBP.' },
     { k: 'cAoOp', l: 'Aortic PWV (operating)', u: 'm/s', f: 1, tip: 'Intrinsic PWV adjusted passively for MAP (elastic arteries stiffen at higher distending pressure).' },
     { k: 'ep', l: 'Peterson modulus Ep', u: 'mmHg', f: 0, tip: 'Ep = D·ΔP/ΔD ≈ 2ρc² (Eq. 6, Nichols & Edwards).' }
   ]},
+  { g: 'Diastolic decay', items: [
+    { k: 'tauFit', l: 'Diastolic decay time constant τ', u: 's', f: 2, st: v => v < 0.75 ? 'warn' : v <= 2.0 ? 'ok' : 'warn',
+      tip: 'How fast central pressure falls once the aortic valve closes. P(t) = P0·e^(−t/τ) is fitted to the last two-thirds of diastole (asymptote 0 mmHg). Larger τ = slower run-off. Invasive studies with the same assumption report ≈ 1.4 ± 0.3 s (Chemla 2017).' },
+    { k: 'decayRate', l: 'Diastolic decay rate', u: 'mmHg/s', f: 0,
+      tip: 'Mean fall of central pressure per second over the same window: (pressure at the start of the window − end-diastolic pressure) ÷ time. Rises with stiffer arteries, lower SVR and higher heart rate.' },
+    { k: 'decayFall', l: 'Pressure fall over the fit window', u: 'mmHg', f: 1,
+      tip: 'Pressure at the start of the fit window minus end-diastolic pressure.' },
+    { k: 'tauFree', l: 'Decay τ, asymptote fitted', u: 's', f: 2,
+      tip: 'Same window, fitting P(t) = P∞ + A·e^(−t/τ) with the asymptote P∞ free. Real aortic pressure decays toward ≈ 60–70 mmHg rather than 0, so this τ is much shorter: invasive studies report ≈ 0.35–0.45 s (Chemla 2017; Yamakado 2018).' },
+    { k: 'pInf', l: 'Decay asymptote P∞', u: 'mmHg', f: 0,
+      tip: 'The pressure the diastolic decay heads toward in the three-parameter fit. Invasive values ≈ 58 ± 8 mmHg (Yamakado 2018) and 71 ± 12 mmHg (Chemla 2017).' }
+  ]},
   { g: 'Ventricle & coronary supply', items: [
-    { k: 'et', l: 'Ejection time (LVET)', u: 'ms', f: 0, tip: 'Weissler LVET ≈ 413 − 1.7·HR, times the ejection-duration multiplier.' },
+    { k: 'et', l: 'Ejection time (LVET)', u: 'ms', f: 0, tip: 'Weissler LVET (413 − 1.7·HR ms in men, 418 − 1.6·HR in women) × the patient\'s ejection-duration setting, held between 150 ms and 60 % of the cycle.' },
     { k: 'tti', l: 'Tension-time index (TTI)', u: 'mmHg·s', f: 1, tip: 'Area under systolic pressure — index of myocardial O₂ demand.' },
     { k: 'dpti', l: 'Diastolic pressure-time (DPTI)', u: 'mmHg·s', f: 1, tip: 'Area of (P − LVEDP) in diastole — index of subendocardial perfusion.' },
     { k: 'sevr', l: 'SEVR (DPTI/TTI)', u: '%', f: 0, st: SL(130, 100), tip: 'Buckberg subendocardial viability ratio. Low values indicate a supply–demand mismatch (Nichols & Edwards).' },
@@ -85,5 +97,6 @@ export const CARDS: Card[] = [
   { id: 'pwv', l: 'Aortic PWV', v: r => r.m.cAoOp.toFixed(1), d: (r, b) => r.m.cAoOp - b.m.cAoOp, u: 'm/s', f: 1, st: r => S(8, 10)(r.m.cAoOp), explain: 'cAoOp' },
   { id: 'dtp', l: 'Δtp', v: r => r.m.dtp.toFixed(0), d: (r, b) => r.m.dtp - b.m.dtp, u: 'ms', f: 0, explain: 'dtp' },
   { id: 'ew', l: 'ΔEw', v: r => (r.m.Ew / 1000).toFixed(1), d: (r, b) => (r.m.Ew - b.m.Ew) / 1000, u: '×10³', f: 1, st: r => S(5000, 12000)(r.m.Ew), explain: 'Ew' },
+  { id: 'decay', l: 'Diastolic τ', v: r => r.m.tauFit.toFixed(2), d: (r, b) => r.m.tauFit - b.m.tauFit, u: 's', f: 2, explain: 'tauFit' },
   { id: 'sevr', l: 'SEVR', v: r => r.m.sevr.toFixed(0), d: (r, b) => r.m.sevr - b.m.sevr, u: '%', f: 0, st: r => SL(130, 100)(r.m.sevr), explain: 'sevr' }
 ];

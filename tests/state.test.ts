@@ -28,7 +28,7 @@ function busyState() {
 
 describe('inputs', () => {
   it('clamps out-of-range values with a warning and never returns NaN', () => {
-    expect(checkInput('hr', 500)).toMatchObject({ value: 130 });
+    expect(checkInput('hr', 500)).toMatchObject({ value: 180 });
     expect(checkInput('hr', 500).warning).toMatch(/above the maximum/);
     expect(checkInput('gamma', -1).value).toBe(0.1);
     for (const bad of [NaN, Infinity, 'abc', null, undefined, {}]) {
@@ -40,7 +40,7 @@ describe('inputs', () => {
   });
   it('± buttons move one step and stop at the limits', () => {
     expect(stepInput('gamma', 0.45, 1)).toBe(0.46);
-    expect(stepInput('hr', 130, 1)).toBe(130);
+    expect(stepInput('hr', 180, 1)).toBe(180);
     expect(stepInput('diam', 2.0, -1)).toBe(2.0);
   });
 });
@@ -73,7 +73,7 @@ describe('URL hash', () => {
   it('clamps out-of-range values and skips unknown parts, with warnings', () => {
     const r = decodeHash('#v=2&A=0_h999_a7.5_zz1&Ad=nosuchdrug~i~0~~1_ntg~i~0~~1&tab=nope');
     expect(r.error).toBeNull();
-    expect(r.state.patients.A.inputs.hr).toBe(130);
+    expect(r.state.patients.A.inputs.hr).toBe(180);
     expect(r.state.patients.A.events.map(e => e.drug)).toEqual(['ntg']);
     expect(r.warnings.join(' ')).toMatch(/maximum/);
     expect(r.warnings.join(' ')).toMatch(/nosuchdrug/);
