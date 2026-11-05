@@ -10,6 +10,7 @@
 import { DEFAULTS, MODEL, PRESETS, STUDY_PROFILES, STUDY_TARGETS, weisslerMs, type Params } from '../config/physiology';
 import { aortaDiameter, bsaDuBois, pwvNormal } from './calibrate';
 import { diastolicDecay } from './indices';
+import { buildCycle } from './cycle';
 import { simulate } from './solve';
 import type { Verdict } from './validation';
 
@@ -57,6 +58,7 @@ export interface StudyReport {
   profiles: StudyProfileRow[];
   heartRate: StudyCheck[];
   decay: StudyCheck[];
+  cycle: StudyCheck[];
 }
 
 const within = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
@@ -143,5 +145,33 @@ export function runStudyValidation(): StudyReport {
       verdict: Math.abs(fast.tauFit / base.tauFit - 1) <= 0.15 ? 'pass' : Math.abs(fast.tauFit / base.tauFit - 1) <= 0.3 ? 'near' : 'fail' }
   ];
 
-  return { profiles, heartRate, decay };
+  /* cardiac-cycle diagram: schematic parts must stay consistent with the modelled beat */
+  const c70 = buildCycle(simulate({})), c180 = buildCycle(simulate({ hr: 180, sv: co / 180 }));
+  const max = (a: number[]) => Math.max(...a);
+  const at = (c: typeof c70, t: number) => Math.min(c.n, Math.max(0, Math.round(t / c.dt)));
+  const ej = (c: typeof c70) => c.t.map((t, i) => [t, i] as const).filter(([t]) => t >= c.tAO && t <= c.tAC).map(([, i]) => i);
+  const grad = Math.max(...ej(c70).map(i => c70.lv[i] - c70.ao[i]));
+  const ivrt = (c70.tMO - c70.tAC) * 1000;
+  const diaFrac = (c: typeof c70) => 100 * (c.T - (c.tAC - c.tMC)) / c.T;
+  const svBack = c70.vol[at(c70, c70.tAO)] - c70.vol[at(c70, c70.tAC)];
+  const cycle: StudyCheck[] = [
+    { what: 'Aortic valve opens when LV pressure reaches aortic DBP', model: `LV ${c70.lv[at(c70, c70.tAO)].toFixed(1)} vs Ao ${c70.ao[at(c70, c70.tAO)].toFixed(1)} mmHg`, reference: 'equal (± 1 mmHg)', source: 'definition',
+      verdict: Math.abs(c70.lv[at(c70, c70.tAO)] - c70.ao[at(c70, c70.tAO)]) <= 1 ? 'pass' : 'fail' },
+    { what: 'LV pressure at mitral closure equals LVEDP', model: `${c70.lv[at(c70, c70.tMC)].toFixed(1)} mmHg`, reference: `${c70.lvedp} mmHg`, source: 'definition',
+      verdict: Math.abs(c70.lv[at(c70, c70.tMC)] - c70.lvedp) <= 0.5 ? 'pass' : 'fail' },
+    { what: 'LV volume falls by the stroke volume during ejection', model: `${svBack.toFixed(1)} mL`, reference: `SV ${c70.sv} mL`, source: 'mass balance',
+      verdict: Math.abs(svBack - c70.sv) <= 1 ? 'pass' : 'fail' },
+    { what: 'Peak LV–aortic ejection gradient (normal valve)', model: `${grad.toFixed(1)} mmHg`, reference: '< 10 mmHg', source: 'typical adult values',
+      verdict: grad > 0 && grad < 10 ? 'pass' : 'fail' },
+    { what: 'Peak LV pressure ≈ peak aortic pressure', model: `${max(c70.lv).toFixed(0)} vs ${max(c70.ao).toFixed(0)} mmHg`, reference: 'within 10 mmHg', source: 'typical adult values',
+      verdict: Math.abs(max(c70.lv) - max(c70.ao)) <= 10 ? 'pass' : 'fail' },
+    { what: 'Isovolumic relaxation time at 70 bpm', model: `${ivrt.toFixed(0)} ms`, reference: '≈ 60–100 ms', source: 'typical adult values (echo)',
+      verdict: within(ivrt, 60, 100) ? 'pass' : within(ivrt, 50, 110) ? 'near' : 'fail' },
+    { what: 'Diastole share of the cycle at 70 bpm', model: `${diaFrac(c70).toFixed(0)} %`, reference: '≈ 60–67 % (about two-thirds)', source: 'typical adult values',
+      verdict: within(diaFrac(c70), 58, 68) ? 'pass' : within(diaFrac(c70), 52, 72) ? 'near' : 'fail' },
+    { what: 'At 180 bpm diastole shortens more than systole', model: `diastole ${diaFrac(c180).toFixed(0)} % of ${(c180.T * 1000).toFixed(0)} ms`, reference: '< 50 % of the cycle', source: 'typical adult values',
+      verdict: diaFrac(c180) < 50 ? 'pass' : 'fail' }
+  ];
+
+  return { profiles, heartRate, decay, cycle };
 }

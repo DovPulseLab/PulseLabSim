@@ -45,7 +45,7 @@ const STEPS: Step[] = [
   { sel: '#casesBtn', text: 'Guided cases: five clinical scenarios with a live goal, questions, a score and teaching points.' },
   { sel: '#cards', text: 'Key measures. Click any card for its definition, formula, normal range and what moves it.' },
   { sel: '#trend', text: 'Trends over the last 10 minutes, one sample per beat. Drug markers sit on top. Drag to zoom.' },
-  { sel: '.tabs', text: 'Compare two patients, learn cause and effect, sweep an input, or look at impedance. Keys 1–7. Press H any time for this tour.' }
+  { sel: '.tabs', text: 'Watch the cardiac cycle, compare two patients, learn cause and effect, sweep an input, or look at impedance. Keys 1–8. Press H any time for this tour.' }
 ];
 const STEP_MS = 7500;
 let tourTimer = 0, tourIdx = 0, tourT0 = 0;

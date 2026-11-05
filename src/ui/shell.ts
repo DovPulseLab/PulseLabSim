@@ -1,8 +1,8 @@
-/* Static page structure. Tabs are keyed 1–7. */
+/* Static page structure. Tabs are keyed 1–8. */
 import type { TabId } from '../state/types';
 
 export const TAB_LABELS: [TabId, string][] = [
-  ['sim', 'Simulator'], ['cmp', 'Compare A vs B'], ['learn', 'Learn'], ['sweep', 'Sweep'],
+  ['sim', 'Simulator'], ['cycle', 'Cardiac cycle'], ['cmp', 'Compare A vs B'], ['learn', 'Learn'], ['sweep', 'Sweep'],
   ['imp', 'Impedance'], ['valid', 'Validation'], ['eq', 'Methods']
 ];
 
@@ -79,7 +79,7 @@ export function buildShell(root: HTMLElement): void {
       <div class="canvas-wrap"><canvas id="trend"></canvas></div>
     </div>
   </section>
-  <footer class="site-foot"><span><b>${DISCLAIMER}</b></span><span>${CREDIT} · <a href="${import.meta.env.BASE_URL}v1/">Classic version (v1)</a> · Keys: 1–7 tabs · Space pause · . step · B baseline · E explain · H help</span></footer>
+  <footer class="site-foot"><span><b>${DISCLAIMER}</b></span><span>${CREDIT} · <a href="${import.meta.env.BASE_URL}v1/">Classic version (v1)</a> · Keys: 1–8 tabs · Space pause · . step · B baseline · E explain · H help</span></footer>
 </div>
 <aside class="drawer" id="drawer" aria-label="Explanation" aria-hidden="true"><header><h2 id="drawerTitle">Explain</h2><button class="btn icon" id="drawerClose" aria-label="Close explanation">✕</button></header><div class="body" id="drawerBody"></div></aside>
 <div class="overlay" id="startOverlay" hidden></div>
