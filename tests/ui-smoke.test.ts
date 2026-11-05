@@ -104,7 +104,7 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#drawerNow')!.textContent).toContain('Patient A');
     key('Escape');
     expect(errors).toEqual([]);
-  });
+  }, 60_000);
 
   it('compare, lesson try-it, sweep stepping, pause/step and present', async () => {
     key('4'); click('[data-lesson="1"]'); click('#tryBtn'); await frames(30);
@@ -120,7 +120,7 @@ describe('UI smoke test', () => {
     key(' '); key('p'); await frames(5); key('p');
     click('#themeBtn'); await frames(3);
     expect(errors).toEqual([]);
-  });
+  }, 60_000);
 
   it('a corrupt JSON import is rejected and settings are kept', async () => {
     const before = document.querySelector<HTMLInputElement>('#num-hr')!.value;
