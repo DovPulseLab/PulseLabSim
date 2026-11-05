@@ -392,3 +392,12 @@ body.present .bottom { grid-template-columns: minmax(0, 1fr); }
 .cyc-now .valve { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink-2); }
 .cyc-now .valve.open { border-color: var(--brach); color: var(--brach); }
 .cyc-now .mono { font-family: var(--mono); color: var(--ink-2); font-size: .92em; }
+.cyc-scrub { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0 0 8px; font-size: .9em; }
+.cyc-scrub input[type=range] { flex: 1 1 220px; min-width: 160px; }
+.cyc-scrub #cycJump { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.cyc-scrub.paused input[type=range] { accent-color: var(--accent); }
+.cyc-play { min-width: 6.5em; font-weight: 600; }
+.cyc-play[aria-pressed="false"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.cyc-now .paused-tag { padding: 2px 8px; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; }
+.cyc-show { margin-top: 8px; }
+#cCycle { cursor: crosshair; }

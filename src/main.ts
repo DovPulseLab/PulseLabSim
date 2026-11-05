@@ -23,7 +23,7 @@ import { buildCmp, renderCmp } from './ui/tabs/cmp';
 import { buildImp, renderImp } from './ui/tabs/imp';
 import { buildLearn, renderLearnBeat, renderLesson, setCausalRef } from './ui/tabs/learn';
 import { beatSim, buildSim, renderSim, tickSim } from './ui/tabs/sim';
-import { beatCycle, buildCycleTab, tickCycle } from './ui/tabs/cycle';
+import { beatCycle, buildCycleTab, stepMs, tickCycle, toggleCyclePlay } from './ui/tabs/cycle';
 import { renderMethods, renderValidation } from './ui/tabs/static';
 import { buildSweep, renderSweep, stepSweep } from './ui/tabs/sweep';
 import { buildTrend, renderTrend } from './ui/trend';
@@ -195,6 +195,13 @@ document.addEventListener('keydown', e => {
   // range sliders keep arrow keys; other keys still work while a slider has focus
   const k = e.key;
   if (k >= '1' && k <= '8') { store.dispatch({ type: 'setTab', tab: TABS[Number(k) - 1] }); e.preventDefault(); return; }
+  if (ctx.tab() === 'cycle') {
+    // Cardiac cycle tab: Space / K play-pause the cycle; , and . step 1 ms (Shift: 10 ms)
+    if (k === ' ' && t.matches('button, a, summary, [role=button]')) return;
+    if (k === ' ' || k === 'k' || k === 'K') { e.preventDefault(); toggleCyclePlay(); return; }
+    if (k === ',' || k === '<') { e.preventDefault(); stepMs(e.shiftKey ? -10 : -1); return; }
+    if (k === '.' || k === '>') { e.preventDefault(); stepMs(e.shiftKey ? 10 : 1); return; }
+  }
   switch (k) {
     case ' ': if (t.matches('button, a, summary, [role=button]')) return; e.preventDefault(); setPaused(!live.clock.paused); break;
     case '.': stepBeat(); break;

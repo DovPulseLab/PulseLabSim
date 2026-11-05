@@ -56,7 +56,7 @@ const gauss = (t: number, c: number, w: number) => Math.exp(-0.5 * ((t - c) / w)
 /** periodic distance from t to c on a cycle of length T */
 const pd = (t: number, c: number, T: number) => { let d = (t - c) % T; if (d > T / 2) d -= T; if (d < -T / 2) d += T; return d; };
 
-export function buildCycle(r: BeatResult, n = 600): Cycle {
+export function buildCycle(r: BeatResult, n = Math.max(300, Math.round(r.d.T / 0.001))): Cycle {
   const T = r.d.T, ET = r.d.ET, N = r.p.length, mdt = r.dt;
   const lvedp = r.params.lvedp, sv = r.params.sv;
   const dt = T / n;
