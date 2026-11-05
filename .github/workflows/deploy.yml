@@ -48,6 +48,11 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # GitHub Pages sometimes stalls with an empty status and deploy-pages gives up after its
+    # default 10 min. Wait up to 20 min. (Re-running a cancelled deploy of the same commit
+    # does not work; if this still fails, push a new commit or re-run after a while.)
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 1200000
