@@ -23,6 +23,7 @@ import { buildCmp, renderCmp } from './ui/tabs/cmp';
 import { buildImp, renderImp } from './ui/tabs/imp';
 import { buildLearn, renderLearnBeat, renderLesson, setCausalRef } from './ui/tabs/learn';
 import { beatSim, buildSim, renderSim, tickSim } from './ui/tabs/sim';
+import { beatCycle, buildCycleTab, tickCycle } from './ui/tabs/cycle';
 import { renderMethods, renderValidation } from './ui/tabs/static';
 import { buildSweep, renderSweep, stepSweep } from './ui/tabs/sweep';
 import { buildTrend, renderTrend } from './ui/trend';
@@ -43,12 +44,12 @@ const ctx: Ctx = {
 };
 
 buildRail(ctx); buildCards(); buildTrend(ctx); buildDrawer();
-buildSim(ctx); buildCmp(ctx); buildLearn(ctx); buildSweep(ctx); buildImp(ctx);
+buildSim(ctx); buildCycleTab(ctx); buildCmp(ctx); buildLearn(ctx); buildSweep(ctx); buildImp(ctx);
 renderLesson();
 
 /* ---------- rendering ---------- */
 const BEAT_TABS: Partial<Record<TabId, () => void>> = {
-  sim: () => beatSim(ctx), cmp: () => renderCmp(ctx), learn: () => renderLearnBeat(ctx),
+  sim: () => beatSim(ctx), cycle: () => beatCycle(ctx), cmp: () => renderCmp(ctx), learn: () => renderLearnBeat(ctx),
   sweep: () => renderSweep(ctx), imp: () => renderImp(ctx)
 };
 
@@ -143,6 +144,7 @@ function frame(now: number): void {
   }
   if (dirty) { dirty = false; renderBeatViews(); }
   if (ctx.tab() === 'sim') tickSim(ctx, now);
+  else if (ctx.tab() === 'cycle') tickCycle(ctx, now);
   requestAnimationFrame(frame);
 }
 
@@ -192,7 +194,7 @@ document.addEventListener('keydown', e => {
   if (mod || e.altKey || typing || !$('#startOverlay').hidden) return;
   // range sliders keep arrow keys; other keys still work while a slider has focus
   const k = e.key;
-  if (k >= '1' && k <= '7') { store.dispatch({ type: 'setTab', tab: TABS[Number(k) - 1] }); e.preventDefault(); return; }
+  if (k >= '1' && k <= '8') { store.dispatch({ type: 'setTab', tab: TABS[Number(k) - 1] }); e.preventDefault(); return; }
   switch (k) {
     case ' ': if (t.matches('button, a, summary, [role=button]')) return; e.preventDefault(); setPaused(!live.clock.paused); break;
     case '.': stepBeat(); break;

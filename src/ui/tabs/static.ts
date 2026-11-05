@@ -74,6 +74,11 @@ export function renderValidation(): void {
   <div class="card prose" style="max-width:none">
     <h2>6 · Heart rate to 180 bpm and diastolic decay (v2.1)</h2>
     <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows([...s5.heartRate, ...s5.decay])}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>7 · Cardiac cycle diagram (v2.2)</h2>
+    <p>The Wiggers diagram combines the model's aortic pressure and flow with schematic LV, left-atrial and volume curves (Methods §12). These checks confirm the schematic parts stay consistent with the modelled beat and give normal timings. Default adult at 70 bpm; the last row at 180 bpm with cardiac output held.</p>
+    <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows(s5.cycle)}</table></div>
   </div>`;
 }
 

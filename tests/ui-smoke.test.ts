@@ -35,8 +35,8 @@ async function frames(n: number, dtMs = 50): Promise<void> {
 }
 
 const click = (sel: string) => { const el = document.querySelector<HTMLElement>(sel); if (!el) throw new Error(`missing ${sel}`); el.click(); };
-const TAB_IDS = ['sim', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'];
-/** Every tab must open by click and by keys 1–7, from every other tab. */
+const TAB_IDS = ['sim', 'cycle', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'];
+/** Every tab must open by click and by keys 1–8, from every other tab. */
 async function checkAllTabs(when: string): Promise<void> {
   const visible = () => TAB_IDS.filter(t => !document.querySelector(`#pane-${t}`)!.hasAttribute('hidden'));
   for (const from of TAB_IDS) for (const [i, to] of TAB_IDS.entries()) {
@@ -73,10 +73,10 @@ describe('UI smoke test', () => {
     expect(errors).toEqual([]);
   });
 
-  it('every tab renders (keys 1–7)', async () => {
-    for (const k of ['1', '2', '3', '4', '5', '6', '7']) {
+  it('every tab renders (keys 1–8)', async () => {
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8']) {
       key(k); await frames(25);
-      const tab = ['sim', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'][Number(k) - 1];
+      const tab = TAB_IDS[Number(k) - 1];
       expect(document.querySelector(`#pane-${tab}`)!.hasAttribute('hidden')).toBe(false);
       expect(document.querySelector(`#pane-${tab}`)!.innerHTML.length).toBeGreaterThan(200);
     }
@@ -97,7 +97,7 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#activeDrugs')!.textContent).toContain('%');
     expect(document.querySelector('#card-hr .d')!.textContent).toMatch(/▼/);
     key('z', { ctrlKey: true }); await frames(5);
-    key('3'); await frames(30);
+    key('4'); await frames(30);
     expect(document.querySelectorAll('#causal .node-rect').length).toBeGreaterThan(20);
     click('#card-aix'); await frames(2);
     expect(document.querySelector('#drawer')!.classList.contains('open')).toBe(true);
@@ -107,11 +107,11 @@ describe('UI smoke test', () => {
   });
 
   it('compare, lesson try-it, sweep stepping, pause/step and present', async () => {
-    key('3'); click('[data-lesson="1"]'); click('#tryBtn'); await frames(30);
+    key('4'); click('[data-lesson="1"]'); click('#tryBtn'); await frames(30);
     expect(document.querySelector('#pane-cmp')!.hasAttribute('hidden')).toBe(false);
     expect(document.querySelector('#cmpDiffers')!.textContent!.length).toBeGreaterThan(10);
     click('[data-act="swap"]'); await frames(20);
-    key('4'); key(']'); key(']'); key('['); await frames(5);
+    key('5'); key(']'); key(']'); key('['); await frames(5);
     expect(document.querySelector('#sweepSel')!.textContent).toContain('point 2/6');
     (document.activeElement as HTMLElement | null)?.blur?.();
     key(' '); await frames(3);
@@ -180,7 +180,7 @@ describe('UI smoke test', () => {
     expect(errors).toEqual([]);
   }, 60_000);
 
-  it('every tab works (clicks and keys 1–7) while a guided case runs, after Quit and after Finish', async () => {
+  it('every tab works (clicks and keys 1–8) while a guided case runs, after Quit and after Finish', async () => {
     click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
     click('[data-dose="1"]'); click('[data-give="propofol"][data-mode="bolus"]'); await frames(200, 250);
     await checkAllTabs('during case');
@@ -189,7 +189,7 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#casePanel')!.hasAttribute('hidden')).toBe(true);
     await checkAllTabs('after Quit');
     click('#casesBtn'); click('[data-case="bb"]'); await frames(20, 250);
-    key('2'); await frames(20, 250);
+    key('3'); await frames(20, 250);
     click('#caseFinish'); await frames(2);
     click('[data-end="close"]'); await frames(2);
     await checkAllTabs('after Finish');

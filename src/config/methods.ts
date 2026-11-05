@@ -154,7 +154,15 @@ ${studyDataHtml()}
 <div class="eq">decay rate = (P at start of window − end-diastolic P) / window duration &nbsp;[mmHg/s]</div>
 <p>Both time constants are reported because published values depend heavily on whether the asymptote is fixed at zero. Compare the fitted τ with the Windkessel prediction RC = SVR × C shown alongside. The dashed grey curve on the central-pressure chart is the zero-asymptote fit.</p>
 
-<h3>12 · Assumptions &amp; limitations</h3>
+<h3>12 · Cardiac cycle diagram (v2.2)</h3>
+<p>The Cardiac cycle tab draws a Wiggers diagram for the active patient's current beat, on one time axis starting at QRS onset, with a cursor that sweeps through the beat in real time or slowed down. <b>From the model:</b> aortic pressure, aortic flow, ejection time, heart rate, stroke volume and LVEDP. <b>Schematic</b> (typical healthy-adult values, tied to the modelled beat): everything else.</p>
+<div class="eq">mitral closure = QRS onset + 50 ms; aortic opening = mitral closure + 45 ms (isovolumic contraction); aortic closure = aortic opening + LVET</div>
+<div class="eq">ejection: P<sub>LV</sub> = P<sub>Ao</sub> + 4·Q/Q<sub>peak</sub> + 3·min(0, dQ/dt)/|dQ/dt|<sub>max</sub> mmHg &nbsp;(gradient ≈ 4 mmHg at peak flow, reversing slightly as flow decelerates)</div>
+<div class="eq">isovolumic relaxation: P<sub>LV</sub> = P<sub>Ao</sub>(closure)·e<sup>−t/τ</sup>, τ = 40 ms, until P<sub>LV</sub> = left-atrial v-wave pressure (LVEDP + 5) → mitral opening</div>
+<div class="eq">LV volume: EDV = SV / 0.60; falls by ∫Q dt (exactly SV) in ejection; fills 78 % passively (rapid filling, τ 60 ms, then diastasis) and 22 % in atrial systole</div>
+<p>Isovolumic relaxation is capped at 45 % of diastole; at very high heart rates τ is shortened so the LV still meets atrial pressure at mitral opening, and the caption says so. Isovolumic contraction and the electromechanical delay are held constant, although both shorten slightly with heart rate in real hearts. The ECG and heart-sound markers show timing only.</p>
+
+<h3>13 · Assumptions &amp; limitations</h3>
 <ul>
   <li>Study profiles: pulse-pressure amplification (cuff − central SBP) is about right at 25–45 y but high at 65–80 y (≈ 13–15 mmHg vs means of 6–8 and 90th percentiles of 12–17 mmHg; Herbert 2014), because the model uses one fixed upper-limb transfer function. At 65–80 y cuff DBP is ≈ 60–63 mmHg and cuff SBP ≈ 128–132 mmHg.</li>
   <li>Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote). With the asymptote fitted, τ is 0.19–0.22 s at 65–80 y, just under the invasive range (0.23–0.65 s).</li>
@@ -166,6 +174,6 @@ ${studyDataHtml()}
   <li>Reflection magnitude depends heavily on the separation method; compare directions, not absolute values.</li>
 </ul>
 
-<h3>13 · References</h3>
+<h3>14 · References</h3>
 <ol>${Object.values(CITATIONS).map(c => `<li>${c}</li>`).join('')}</ol>`;
 }

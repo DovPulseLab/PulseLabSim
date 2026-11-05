@@ -3,7 +3,7 @@ import type { DrugEvent } from '../engine/kinetics';
 import type { Warp } from '../engine/clock';
 
 export type PatientId = 'A' | 'B';
-export const TABS = ['sim', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'] as const;
+export const TABS = ['sim', 'cycle', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'] as const;
 export type TabId = (typeof TABS)[number];
 
 export interface PatientState {

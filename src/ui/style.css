@@ -382,3 +382,13 @@ body.present .bottom { grid-template-columns: minmax(0, 1fr); }
 .score-rows { display: grid; gap: 4px; margin: 8px 0 14px; max-width: 460px; }
 .score-rows div { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line-2); padding: 3px 0; }
 .score-rows b { font-family: var(--mono); }
+
+/* ---------- cardiac cycle tab ---------- */
+.cyc-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.cyc-now { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 10px; margin: 0 0 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; font-size: .9em; min-height: 2.4em; }
+.cyc-now .ph { padding: 2px 8px; border-radius: 999px; }
+.cyc-now .ph.sys { background: var(--accent-soft); color: var(--accent); }
+.cyc-now .ph.dia { background: var(--pa-soft); color: var(--fwd); }
+.cyc-now .valve { padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--ink-2); }
+.cyc-now .valve.open { border-color: var(--brach); color: var(--brach); }
+.cyc-now .mono { font-family: var(--mono); color: var(--ink-2); font-size: .92em; }
