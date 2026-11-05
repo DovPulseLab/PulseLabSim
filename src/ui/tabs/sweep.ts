@@ -1,7 +1,10 @@
 /* Sweep: one input across its range at 6 or 12 points with everything else held at the
    patient's current (after-drug) values. Waveform family + any index vs the swept input.
    [ and ] step the highlighted point. */
-import { ALL_CONTROLS, type Control, type Params, type ParamKey } from '../../config/physiology';
+import { ALL_CONTROLS as ALL_INPUTS, type Control, type Params, type ParamKey } from '../../config/physiology';
+
+/** Sweepable inputs: direct model inputs on a slider (not sex, age or weight). */
+const ALL_CONTROLS = ALL_INPUTS.filter(c => c.model !== false && c.kind !== 'toggle');
 import type { Indices } from '../../model/indices';
 import { simulate, type BeatResult } from '../../model/solve';
 import { lineChart, type Series } from '../../render/chart';
@@ -16,6 +19,7 @@ const SWEEP_P: { k: keyof Indices; l: string; c: string; on: boolean }[] = [
 const SWEEP_I: { k: keyof Indices; l: string }[] = [
   { k: 'AIx', l: 'AIx (%)' }, { k: 'ppa', l: 'PP amplification' }, { k: 'dtp', l: 'Δtp (ms)' }, { k: 'sevr', l: 'SEVR (%)' },
   { k: 'Ew', l: 'ΔEw (dyn·s/cm²)' }, { k: 'lsEs', l: 'LSPTI/ESPTI' }, { k: 'ctot', l: 'Compliance (mL/mmHg)' },
+  { k: 'tauFit', l: 'Diastolic decay τ (s)' }, { k: 'decayRate', l: 'Diastolic decay rate (mmHg/s)' },
   { k: 'zcDyn', l: 'Zc (dyn·s·cm⁻⁵)' }, { k: 'svrDyn', l: 'SVR (dyn·s·cm⁻⁵)' }, { k: 'co', l: 'CO (L/min)' }, { k: 'cAoOp', l: 'Aortic PWV (m/s)' }
 ];
 const SEQ = ['#56b4e9', '#3a9bd4', '#0072b2', '#5b6fb0', '#8d6aa8', '#b8679a', '#cc79a7', '#d97a6a', '#e08a3c', '#e69f00', '#d97a00', '#d55e00'];

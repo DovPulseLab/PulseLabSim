@@ -20,6 +20,9 @@ export interface Params {
   lpScale: number;   // reflection-site distance multiplier
   vEff: number;      // effective arterial volume for compliance, mL
   lvedp: number;     // LV end-diastolic pressure for SEVR, mmHg
+  sex: number;       // 0 = male, 1 = female (Weissler LVET; calibration)
+  age: number;       // years (calibration only)
+  weight: number;    // kg (BSA for calibration only)
 }
 
 export type ParamKey = keyof Params;
@@ -36,9 +39,11 @@ export const PHYS = {
 
 /* ---------------- model tuning constants (v1) ---------------- */
 export const MODEL = {
-  /** Weissler LVET (ms) = a − b·HR */
+  /** Weissler LVET (ms) = a − b·HR (Weissler 1968; men 413 − 1.7·HR, women 418 − 1.6·HR) */
   lvetA: 413,
   lvetB: 1.7,
+  lvetAF: 418,
+  lvetBF: 1.6,
   etMin: 0.15,              // s
   etMaxFrac: 0.6,           // of cycle length
   /** Passive MAP → stiffness coupling: c = c0·(1 + k·(MAP − mapRef)) */
@@ -69,11 +74,15 @@ export const MODEL = {
   p2Window: 0.08            // s after echo arrival to search for P2
 } as const;
 
+/** Default ejection duration at the default HR (ms). etScale is stored so that ejection
+ *  still follows HR through the Weissler relation; the slider shows milliseconds. */
+export const DEFAULT_LVET_MS = 300;
+
 /* ---------------- default physiology (healthy ~45 y man) ---------------- */
 export const DEFAULTS: Readonly<Params> = {
   hr: 70,
   sv: 72,
-  etScale: 1.0,
+  etScale: Number((DEFAULT_LVET_MS / (413 - 1.7 * 70)).toFixed(6)),   // 300 ms at 70 bpm (v1: 1.0 = 294 ms)
   radius: 100,
   svrRef: 1.10,
   cAo: 7.5,
@@ -83,7 +92,10 @@ export const DEFAULTS: Readonly<Params> = {
   height: 175,
   lpScale: 1.0,
   vEff: 450,
-  lvedp: 8
+  lvedp: 8,
+  sex: 0,
+  age: 45,
+  weight: 77
 };
 
 /* ---------------- sliders (from v1 js/content.js) ---------------- */
@@ -97,6 +109,40 @@ export interface Control {
   /** decimals shown */
   f: number;
   tip: string;
+  /** 'toggle' renders as buttons, one per option (value = option index) */
+  kind?: 'toggle';
+  options?: string[];
+  /** false: patient description only (calibration), not a direct model input;
+   *  left out of sweeps and the "what differs" breakdown */
+  model?: false;
+  /** Shown to the user in other units than stored (ejection duration: ms ↔ multiplier). */
+  view?: ControlView;
+}
+export interface ControlView {
+  unit: string;
+  f: number;
+  step: number;
+  to: (v: number, p: Params) => number;
+  from: (x: number, p: Params) => number;
+}
+
+/** Weissler LVET in ms for a heart rate and sex (men 413 − 1.7·HR; women 418 − 1.6·HR). */
+export const weisslerMs = (hr: number, sex: number): number =>
+  sex === 1 ? MODEL.lvetAF - MODEL.lvetBF * hr : MODEL.lvetA - MODEL.lvetB * hr;
+
+/** Ejection duration shown in ms: Weissler LVET at the set HR × multiplier, before the
+ *  model's floor (150 ms) and ceiling (60 % of the cycle) are applied. */
+const ET_VIEW: ControlView = {
+  unit: 'ms', f: 0, step: 1,
+  to: (v, p) => v * weisslerMs(p.hr, p.sex),
+  from: (x, p) => x / weisslerMs(p.hr, p.sex)
+};
+
+/** A control's value as text, in the units the user sees. */
+export function controlText(c: Control, v: number, p: Params): string {
+  if (c.kind === 'toggle' && c.options) return c.options[Math.round(v)] ?? String(v);
+  if (c.view) return `${c.view.to(v, p).toFixed(c.view.f)} ${c.view.unit}`;
+  return `${v.toFixed(c.f)}${c.unit ? ' ' + c.unit : ''}`;
 }
 export interface ControlGroup {
   group: string;
@@ -106,12 +152,12 @@ export interface ControlGroup {
 
 export const CONTROLS: ControlGroup[] = [
   { group: 'Heart', color: 'var(--accent)', items: [
-    { key: 'hr', label: 'Heart rate', min: 40, max: 130, step: 1, unit: 'bpm', f: 0,
-      tip: 'Sets cycle length and, via the Weissler relation, ejection time (LVET ≈ 413 − 1.7·HR ms). Slower HR lengthens systole, so the reflected wave lands earlier relative to ejection and AIx rises.' },
+    { key: 'hr', label: 'Heart rate', min: 40, max: 180, step: 1, unit: 'bpm', f: 0,
+      tip: 'Sets cycle length and, via the Weissler relation, ejection time (LVET ≈ 413 − 1.7·HR ms in men, 418 − 1.6·HR in women). Slower HR lengthens systole, so the reflected wave lands earlier relative to ejection and AIx rises. Weissler\'s regression was validated from 50 to 150 bpm; above that ejection is held at its 150 ms floor and 60 % of the cycle, so treat values above 150 bpm as extrapolation.' },
     { key: 'sv', label: 'Stroke volume', min: 30, max: 120, step: 1, unit: 'mL', f: 0,
       tip: 'Volume ejected per beat. Scales the flow wave, hence the forward pressure wave (water-hammer: ΔP = Zc·ΔQ) and cardiac output.' },
-    { key: 'etScale', label: 'Ejection duration', min: 0.8, max: 1.2, step: 0.01, unit: '×', f: 2,
-      tip: 'Multiplier on the Weissler LVET. Longer ejection keeps the ventricle exposed to the returning reflected wave for longer (larger Δtr and wasted energy).' }
+    { key: 'etScale', label: 'Ejection duration', min: 0.8, max: 1.2, step: 0.001, unit: '× Weissler', f: 3, view: ET_VIEW,
+      tip: 'Left-ventricular ejection time (LVET) in ms. It follows heart rate through the Weissler relation (LVET ≈ 413 − 1.7·HR ms in men, 418 − 1.6·HR in women), so changing HR changes it; the slider sets how far this patient sits from that line (0.8–1.2 ×). Longer ejection keeps the ventricle exposed to the returning reflected wave for longer (larger Δtr and wasted energy).' }
   ]},
   { group: 'Arterioles (resistance)', color: 'var(--ink-3)', items: [
     { key: 'radius', label: 'Arteriolar radius', min: 75, max: 125, step: 0.5, unit: '%', f: 1,
@@ -132,23 +178,77 @@ export const CONTROLS: ControlGroup[] = [
       tip: 'Scales the effective distance to the major reflection site (Lp = 0.27 × height × factor). Values > 1 shift the site distally (as described in youth).' }
   ]},
   { group: 'Patient', color: 'var(--brach)', items: [
+    { key: 'sex', label: 'Sex', min: 0, max: 1, step: 1, unit: '', f: 0, kind: 'toggle', options: ['Male', 'Female'],
+      tip: 'Selects the sex-specific Weissler ejection-time line and the sex-specific reference equations used to calibrate aortic diameter and stroke volume. Changing it recalibrates aortic diameter, aortic PWV and stroke volume.' },
+    { key: 'age', label: 'Age', min: 18, max: 95, step: 1, unit: 'y', f: 0, model: false,
+      tip: 'Used only for calibration: changing age recalculates aortic diameter (Campens 2014), intrinsic aortic PWV (Reference Values for Arterial Stiffness Collaboration 2010) and stroke volume (Maceira 2006). It does not act on the waveform directly.' },
     { key: 'height', label: 'Height', min: 140, max: 205, step: 1, unit: 'cm', f: 0,
-      tip: 'Body height sets the path length to the reflection site and the arm path. Shorter people have earlier reflections and a higher AIx (Nichols & Singh 2002).' }
+      tip: 'Body height sets the path length to the reflection site and the arm path. Shorter people have earlier reflections and a higher AIx (Nichols & Singh 2002). With weight it gives body surface area, so changing it also recalibrates aortic diameter and stroke volume.' },
+    { key: 'weight', label: 'Weight', min: 35, max: 160, step: 1, unit: 'kg', f: 0, model: false,
+      tip: 'Used only for calibration: with height it gives body surface area (Du Bois), which scales the predicted aortic diameter and stroke volume.' }
   ]}
 ];
 
 export const ALL_CONTROLS: Control[] = CONTROLS.flatMap(g => g.items);
 
 /* ---------------- presets (from v1) ---------------- */
+
+/* -------- healthy study profiles: men and women at 25, 45, 65 and 80 y --------
+   Height and weight: typical healthy-weight adults (BMI ≈ 23–24); enter your
+   subject's own values and the calibrated inputs update.
+   Calibrated from sex, age, height and weight (src/model/calibrate.ts):
+     aortic diameter (Campens 2014), intrinsic aortic PWV (RVASC 2010 normal values),
+     stroke volume (Maceira 2006 SV/BSA × 0.70).
+   Fitted, two numbers per profile, to healthy reference data:
+     arteriolar radius (SVR) so central SBP = mean of the "normal" population of
+       Herbert et al. 2014 for that sex and age decade;
+     reflection coefficient Γ so AIx = Janner et al. 2010 reference equation
+       (sex, age, HR, height).
+   Everything else (DBP, PP, amplification, PWV at the operating MAP, diastolic decay,
+   SEVR) is a model prediction, checked on the Validation tab.
+   Ejection duration starts at 300 ms (etScale = 300 / Weissler LVET at 70 bpm). */
+export interface StudyProfile { sex: 0 | 1; age: number; height: number; weight: number; diam: number; cAo: number; sv: number; radius: number; gamma: number; }
+export const STUDY_PROFILES: Record<string, StudyProfile> = {
+  'Healthy man (25 y)':   { sex: 0, age: 25, height: 177, weight: 75, diam: 2.70, cAo: 6.2,  sv: 75, radius: 103.5, gamma: 0.30 },
+  'Healthy man (45 y)':   { sex: 0, age: 45, height: 176, weight: 77, diam: 3.00, cAo: 7.2,  sv: 73, radius: 102.5, gamma: 0.33 },
+  'Healthy man (65 y)':   { sex: 0, age: 65, height: 174, weight: 75, diam: 3.20, cAo: 10.3, sv: 69, radius: 101.5, gamma: 0.31 },
+  'Healthy man (80 y)':   { sex: 0, age: 80, height: 171, weight: 71, diam: 3.30, cAo: 10.9, sv: 65, radius: 99.5,  gamma: 0.34 },
+  'Healthy woman (25 y)': { sex: 1, age: 25, height: 163, weight: 61, diam: 2.45, cAo: 6.2,  sv: 63, radius: 102,   gamma: 0.36 },
+  'Healthy woman (45 y)': { sex: 1, age: 45, height: 162, weight: 62, diam: 2.75, cAo: 7.2,  sv: 59, radius: 98,    gamma: 0.43 },
+  'Healthy woman (65 y)': { sex: 1, age: 65, height: 160, weight: 61, diam: 2.90, cAo: 10.3, sv: 55, radius: 96,    gamma: 0.37 },
+  'Healthy woman (80 y)': { sex: 1, age: 80, height: 157, weight: 58, diam: 2.95, cAo: 10.9, sv: 52, radius: 94,    gamma: 0.36 }
+};
+/** Reference targets the study profiles were fitted to (central SBP, mmHg; AIx, %). */
+export const STUDY_TARGETS: Record<string, { cSBP: number; aix: number }> = {
+  'Healthy man (25 y)':   { cSBP: 103, aix: 5.1 },
+  'Healthy man (45 y)':   { cSBP: 106, aix: 15.3 },
+  'Healthy man (65 y)':   { cSBP: 114, aix: 24.2 },
+  'Healthy man (80 y)':   { cSBP: 116, aix: 30.5 },
+  'Healthy woman (25 y)': { cSBP: 95,  aix: 12.7 },
+  'Healthy woman (45 y)': { cSBP: 102, aix: 24.0 },
+  'Healthy woman (65 y)': { cSBP: 114, aix: 31.5 },
+  'Healthy woman (80 y)': { cSBP: 118, aix: 34.8 }
+};
+
+function studyPresets(): Record<string, Partial<Params>> {
+  return Object.fromEntries(Object.entries(STUDY_PROFILES).map(([name, s]) => [name, {
+    ...s, hr: 70, lpScale: 1.0, etScale: Number((DEFAULT_LVET_MS / weisslerMs(70, s.sex)).toFixed(6))
+  }]));
+}
+export const isStudyPreset = (name: string): boolean => name in STUDY_PROFILES;
+
+/* v1 teaching profiles first (their order is part of saved links), then the healthy
+   study profiles. Age on the v1 profiles is descriptive only. */
 export const PRESETS: Record<string, Partial<Params>> = {
   'Default adult (45 y)': {},
-  'Young adult (20 y)':  { hr: 64, sv: 78, cAo: 5.2, cMus: 9.0, gamma: 0.42, diam: 2.4, lpScale: 1.3, radius: 102 },
+  'Young adult (20 y)':  { hr: 64, sv: 78, cAo: 5.2, cMus: 9.0, gamma: 0.42, diam: 2.4, lpScale: 1.3, radius: 102, age: 20 },
   'Middle-aged (45 y)':  { hr: 70, sv: 72, cAo: 7.5, cMus: 9.0, gamma: 0.45, diam: 2.8, lpScale: 1.0 },
-  'Older adult (70 y)':  { hr: 68, sv: 70, cAo: 9.5, cMus: 9.0, gamma: 0.58, diam: 3.4, lpScale: 0.95, radius: 97 },
-  'Isolated systolic HTN (80 y)': { hr: 66, sv: 70, cAo: 11.5, cMus: 9.0, gamma: 0.62, diam: 3.8, lpScale: 0.9, radius: 95 },
-  'Essential HTN (55 y)': { hr: 74, sv: 74, cAo: 8.8, cMus: 9.5, gamma: 0.55, diam: 3.0, lpScale: 0.95, radius: 97 },
+  'Older adult (70 y)':  { hr: 68, sv: 70, cAo: 9.5, cMus: 9.0, gamma: 0.58, diam: 3.4, lpScale: 0.95, radius: 97, age: 70 },
+  'Isolated systolic HTN (80 y)': { hr: 66, sv: 70, cAo: 11.5, cMus: 9.0, gamma: 0.62, diam: 3.8, lpScale: 0.9, radius: 95, age: 80 },
+  'Essential HTN (55 y)': { hr: 74, sv: 74, cAo: 8.8, cMus: 9.5, gamma: 0.55, diam: 3.0, lpScale: 0.95, radius: 97, age: 55 },
   'Short stature (155 cm)': { height: 155 },
-  'Tall stature (195 cm)':  { height: 195 }
+  'Tall stature (195 cm)':  { height: 195 },
+  ...studyPresets()
 };
 
 /* -------- long-term drug effects (from v1, multiplicative / additive) --------
@@ -260,5 +360,15 @@ export const CITATIONS = {
   T2015a: 'Townsend RR, Black HR, Chirinos JA, et al. Clinical use of pulse wave analysis: proceedings from a symposium sponsored by North American Artery. J Clin Hypertens 2015;17:503–513.',
   T2015b: 'Townsend RR. Novel uses of office-based measures of arterial compliance. Methodist DeBakey Cardiovasc J 2015;11(4):219–222.',
   W2000: 'Wilkinson IB, MacCallum H, Flint L, et al. The influence of heart rate on augmentation index and central arterial pressure in humans. J Physiol 2000;525:263–270.',
-  McDonald: "Nichols WW, O'Rourke MF, Vlachopoulos C. McDonald's Blood Flow in Arteries. 6th ed. Hodder Arnold; 2011."
+  McDonald: "Nichols WW, O'Rourke MF, Vlachopoulos C. McDonald's Blood Flow in Arteries. 6th ed. Hodder Arnold; 2011.",
+  Weissler1968: 'Weissler AM, Harris WS, Schoenfeld CD. Systolic time intervals in heart failure in man. Circulation 1968;37:149–159.',
+  Campens2014: 'Campens L, Demulier L, De Groote K, et al. Reference values for echocardiographic assessment of the diameter of the aortic root and ascending aorta spanning all age categories. Am J Cardiol 2014;114:914–920.',
+  RVASC2010: "Reference Values for Arterial Stiffness' Collaboration. Determinants of pulse wave velocity in healthy people and in the presence of cardiovascular risk factors: 'establishing normal and reference values'. Eur Heart J 2010;31:2338–2350.",
+  Maceira2006: 'Maceira AM, Prasad SK, Khan M, Pennell DJ. Normalized left ventricular systolic and diastolic function by steady state free precession cardiovascular magnetic resonance. J Cardiovasc Magn Reson 2006;8:417–426.',
+  Herbert2014: 'Herbert A, Cruickshank JK, Laurent S, Boutouyrie P; Reference Values for Arterial Measurements Collaboration. Establishing reference values for central blood pressure and its amplification in a general healthy population and according to cardiovascular risk factors. Eur Heart J 2014;35:3122–3133.',
+  Janner2010: 'Janner JH, Godtfredsen NS, Ladelund S, Vestbo J, Prescott E. Aortic augmentation index: reference values in a large unselected population by means of the SphygmoCor device. Am J Hypertens 2010;23:180–185.',
+  Chemla2017: 'Chemla D, et al. Influence of critical closing pressure on systemic vascular resistance and total arterial compliance: a clinical invasive study. 2017; PMID 28958408.',
+  Yamakado2018: 'Yamakado T. Effect of aging on the pressure asymptote and time constant of exponential diastolic aortic pressure decay in humans. Artery Res 2018;24:82 (abstract P11).',
+  DuBois1916: 'Du Bois D, Du Bois EF. A formula to estimate the approximate surface area if height and weight be known. Arch Intern Med 1916;17:863–871.',
+  Liu1986: 'Liu Z, Brin KP, Yin FC. Estimation of total arterial compliance: an improved method and evaluation of current methods. Am J Physiol 1986;251:H588–H600.'
 } as const;

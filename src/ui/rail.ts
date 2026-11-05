@@ -1,14 +1,17 @@
 /* Left control rail: patient A/B, profile, sliders (Heart · Large arteries · Periphery) and Drugs. */
-import { ACUTE_DRUGS, ALL_CONTROLS, ALL_DRUGS, DRUGS, DRUG_EMAX, DRUG_KINETICS, ENGINE, PRESETS, type Control, type ParamKey } from '../config/physiology';
+import { ACUTE_DRUGS, ALL_CONTROLS, ALL_DRUGS, DRUGS, DRUG_EMAX, DRUG_KINETICS, ENGINE, PRESETS, controlText, isStudyPreset, type Control, type ParamKey } from '../config/physiology';
+import { calibrate } from '../model/calibrate';
 import { stepInput } from '../state/inputs';
 import type { PatientId } from '../state/types';
 import type { Ctx } from './context';
 import { $, $$, esc } from './dom';
 
-const GROUPS: { name: string; keys: ParamKey[] }[] = [
+const GROUPS: { name: string; keys: ParamKey[]; note?: string }[] = [
+  { name: 'Patient', keys: ['sex', 'age', 'height', 'weight'],
+    note: 'Changing sex, age, height or weight recalculates aortic diameter, aortic PWV and stroke volume from healthy reference data. You can still adjust those sliders afterwards.' },
   { name: 'Heart', keys: ['hr', 'sv', 'etScale'] },
   { name: 'Large arteries', keys: ['cAo', 'diam'] },
-  { name: 'Periphery', keys: ['radius', 'cMus', 'gamma', 'lpScale', 'height'] }
+  { name: 'Periphery', keys: ['radius', 'cMus', 'gamma', 'lpScale'] }
 ];
 const CTRL = Object.fromEntries(ALL_CONTROLS.map(c => [c.key, c])) as Record<ParamKey, Control>;
 
@@ -17,12 +20,16 @@ let dose = 1;
 export function buildRail(ctx: Ctx): void {
   const root = $('#controls');
   root.innerHTML = GROUPS.map(g => `<details class="group" open><summary>${g.name}<span class="chev" aria-hidden="true">▾</span></summary>
-    ${g.keys.map(k => { const c = CTRL[k]; return `<div class="ctrl" data-key="${k}">
+    ${g.note ? `<p class="fine">${esc(g.note)}</p>` : ''}
+    ${g.keys.map(k => { const c = CTRL[k]; return c.kind === 'toggle' ? `<div class="ctrl" data-key="${k}">
+      <div class="ctrl-top"><button class="lbl" data-explain="${k}" title="${esc(c.tip)}">${c.label}</button><span class="ctrl-val" id="val-${k}"></span></div>
+      <div class="seg" role="group" aria-label="${esc(c.label)}" id="seg-${k}">${(c.options ?? []).map((o, i) => `<button data-toggle="${k}" data-v="${i}" aria-pressed="false">${esc(o)}</button>`).join('')}</div>
+      <div class="ctrl-derived" id="der-${k}"></div></div>` : `<div class="ctrl" data-key="${k}">
       <div class="ctrl-top"><button class="lbl" data-explain="${k}" title="${esc(c.tip)}">${c.label}</button><span class="ctrl-val" id="val-${k}"></span></div>
       <div class="ctrl-row">
-        <input type="range" id="in-${k}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${esc(c.label)}${c.unit ? ` (${c.unit})` : ''}">
+        <input type="range" id="in-${k}" min="${c.min}" max="${c.max}" step="${c.view?.step ?? c.step}" aria-label="${esc(c.label)} (${esc(c.view?.unit ?? c.unit)})">
         <button class="step" data-step="-1" aria-label="Decrease ${esc(c.label)}">−</button>
-        <input type="number" id="num-${k}" min="${c.min}" max="${c.max}" step="${c.step}" aria-label="${esc(c.label)} value">
+        <input type="number" id="num-${k}" min="${c.min}" max="${c.max}" step="${c.view?.step ?? c.step}" aria-label="${esc(c.label)} value in ${esc(c.view?.unit ?? c.unit)}">
         <button class="step" data-step="1" aria-label="Increase ${esc(c.label)}">+</button>
       </div><div class="ctrl-derived" id="der-${k}"></div></div>`; }).join('')}
   </details>`).join('') + `<details class="group" open><summary>Drugs<span class="chev" aria-hidden="true">▾</span></summary>
@@ -35,23 +42,35 @@ export function buildRail(ctx: Ctx): void {
     <p class="fine">Drug magnitudes and time constants are illustrative teaching values (see Methods).</p>
   </details>`;
 
-  // sliders
+  // sliders (a control with a view, e.g. ejection duration in ms, converts on the way in)
   let dragId = 0;
+  const inputs = () => ctx.store.get().app.patients[ctx.active()].inputs;
+  const stored = (c: Control, raw: string | number): unknown => {
+    if (!c.view) return raw;
+    const x = Number(raw), p = inputs();
+    if (!Number.isFinite(x) || String(raw).trim() === '') return raw;
+    const lo = Math.ceil(c.view.to(c.min, p)), hi = Math.floor(c.view.to(c.max, p));
+    return Number(c.view.from(Math.min(hi, Math.max(lo, x)), p).toFixed(6));
+  };
   for (const c of ALL_CONTROLS) {
+    if (c.kind === 'toggle') continue;
     const range = $<HTMLInputElement>(`#in-${c.key}`), num = $<HTMLInputElement>(`#num-${c.key}`);
     range.addEventListener('pointerdown', () => { dragId = Date.now(); });
-    range.addEventListener('input', () => ctx.store.dispatch({ type: 'setInput', key: c.key, value: Number(range.value), coalesce: `drag-${c.key}-${dragId || Date.now()}` }));
+    range.addEventListener('input', () => ctx.store.dispatch({ type: 'setInput', key: c.key, value: stored(c, Number(range.value)), coalesce: `drag-${c.key}-${dragId || Date.now()}` }));
     range.addEventListener('change', () => { dragId = 0; });
-    num.addEventListener('change', () => ctx.store.dispatch({ type: 'setInput', key: c.key, value: num.value }));
+    num.addEventListener('change', () => ctx.store.dispatch({ type: 'setInput', key: c.key, value: stored(c, num.value) }));
     num.addEventListener('keydown', e => { if (e.key === 'Enter') num.blur(); });
   }
   root.addEventListener('click', e => {
     const t = e.target as HTMLElement;
+    const tg = t.closest<HTMLElement>('[data-toggle]');
+    if (tg) { ctx.store.dispatch({ type: 'setInput', key: tg.dataset.toggle as ParamKey, value: Number(tg.dataset.v) }); return; }
     const st = t.closest<HTMLElement>('[data-step]');
     if (st) {
       const key = st.closest<HTMLElement>('[data-key]')!.dataset.key as ParamKey;
-      const cur = ctx.store.get().app.patients[ctx.active()].inputs[key];
-      ctx.store.dispatch({ type: 'setInput', key, value: stepInput(key, cur, Number(st.dataset.step) as 1 | -1) });
+      const c = CTRL[key], p = inputs(), dir = Number(st.dataset.step) as 1 | -1;
+      const value = c.view ? stored(c, Math.round(c.view.to(p[key], p)) + dir * c.view.step) : stepInput(key, p[key], dir);
+      ctx.store.dispatch({ type: 'setInput', key, value });
       return;
     }
     const d = t.closest<HTMLElement>('[data-dose]');
@@ -82,7 +101,10 @@ export function buildRail(ctx: Ctx): void {
   // patient switch, preset, reset
   $('#ptSwitch').addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-pt]'); if (b) ctx.store.dispatch({ type: 'setActive', patient: b.dataset.pt as PatientId }); });
   const sel = $<HTMLSelectElement>('#preset');
-  sel.innerHTML = Object.keys(PRESETS).map(k => `<option>${esc(k)}</option>`).join('');
+  const names = Object.keys(PRESETS);
+  const opts = (list: string[]) => list.map(k => `<option>${esc(k)}</option>`).join('');
+  sel.innerHTML = `<optgroup label="Teaching profiles">${opts(names.filter(n => !isStudyPreset(n)))}</optgroup>
+    <optgroup label="Healthy study profiles">${opts(names.filter(isStudyPreset))}</optgroup>`;
   sel.addEventListener('change', () => ctx.store.dispatch({ type: 'loadPreset', preset: sel.value }));
   $('#resetBtn').addEventListener('click', () => ctx.store.dispatch({ type: 'resetPatient' }));
   $('#railHandle').addEventListener('click', () => {
@@ -96,7 +118,7 @@ const drugText = (ctx: Ctx, id: PatientId) => {
   const names = [...new Set(evs.map(e => ALL_DRUGS[e.drug].short))];
   return names.length ? names.join(' + ') : 'no drugs';
 };
-const shortPreset = (p: string) => p.replace(/\s*\(.*\)/, '') + (p.match(/\((.*)\)/) ? ', ' + p.match(/\((.*)\)/)![1] : '');
+const shortPreset = (p: string): string => p.replace(/\s*\(.*\)/, '') + (p.match(/\((.*)\)/) ? ', ' + p.match(/\((.*)\)/)![1] : '');
 
 /** Re-render everything that depends on the store (not on beats). */
 export function renderRail(ctx: Ctx): void {
@@ -106,9 +128,23 @@ export function renderRail(ctx: Ctx): void {
   $('#rail').classList.toggle('ptB', id === 'B');
   $<HTMLSelectElement>('#preset').value = p.preset;
   for (const c of ALL_CONTROLS) {
+    const v = p.inputs[c.key];
+    if (c.kind === 'toggle') {
+      $$(`#seg-${c.key} button`).forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === Math.round(v))));
+      continue;
+    }
     const range = $<HTMLInputElement>(`#in-${c.key}`), num = $<HTMLInputElement>(`#num-${c.key}`);
-    if (document.activeElement !== range) range.value = String(p.inputs[c.key]);
-    if (document.activeElement !== num) num.value = String(Number(p.inputs[c.key].toFixed(Math.max(c.f, 2))));
+    if (c.view) {
+      // the ms range moves with HR and sex: 0.8–1.2 × the Weissler value
+      const lo = Math.ceil(c.view.to(c.min, p.inputs)), hi = Math.floor(c.view.to(c.max, p.inputs));
+      for (const el of [range, num]) { el.min = String(lo); el.max = String(hi); }
+      const shown = Math.round(c.view.to(v, p.inputs));
+      if (document.activeElement !== range) range.value = String(shown);
+      if (document.activeElement !== num) num.value = String(shown);
+      continue;
+    }
+    if (document.activeElement !== range) range.value = String(v);
+    if (document.activeElement !== num) num.value = String(Number(v.toFixed(Math.max(c.f, 2))));
   }
   const btn = (drug: string, mode: string, label: string, steady = false) =>
     `<button class="btn sm" data-give="${drug}" data-mode="${mode}"${steady ? ' data-steady="1"' : ''}>${label}</button>`;
@@ -126,18 +162,27 @@ export function renderRailBeat(ctx: Ctx): void {
   const p = ctx.store.get().app.patients[id];
   const act = beat.effect.params, m = beat.res.m;
   for (const c of ALL_CONTROLS) {
-    const set = p.inputs[c.key], a = act[c.key];
-    const differs = Math.abs(a - set) >= c.step / 2;
-    $(`#val-${c.key}`).innerHTML = differs
-      ? `${set.toFixed(c.f)} → <span class="act" title="value after drugs">${a.toFixed(c.f)}</span> ${c.unit}`
-      : `${set.toFixed(c.f)} ${c.unit}`;
+    const set = controlText(c, p.inputs[c.key], p.inputs), a = controlText(c, act[c.key], act);
+    $(`#val-${c.key}`).innerHTML = a !== set
+      ? `${esc(set)} → <span class="act" title="value after drugs">${esc(a)}</span>`
+      : esc(set);
   }
+  const cal = calibrate(p.inputs);
+  const range2 = (r: [number, number], f: number) => `${r[0].toFixed(f)}–${r[1].toFixed(f)}`;
+  const etNote = Math.abs(m.et - CTRL.etScale.view!.to(act.etScale, act)) >= 1
+    ? `model uses ${m.et.toFixed(0)} ms (held between 150 ms and 60 % of the ${(60000 / act.hr).toFixed(0)} ms cycle)`
+    : `${act.sex === 1 ? 'women' : 'men'}: Weissler ${(act.sex === 1 ? 418 - 1.6 * act.hr : 413 - 1.7 * act.hr).toFixed(0)} ms at ${act.hr.toFixed(0)} bpm`;
+  const hrNote = act.hr > 150 ? ' · above 150 bpm the Weissler line is extrapolated'
+    : act.hr > 120 && m.co > 8 ? ' · at high HR real stroke volume falls; lower SV to match your scenario' : '';
   const der: Partial<Record<ParamKey, string>> = {
-    hr: `ejection ${m.et.toFixed(0)} ms · cycle ${(60000 / act.hr).toFixed(0)} ms${beat.effect.reflexBpm ? ` · baroreflex ${beat.effect.reflexBpm.toFixed(1)} bpm` : ''}`,
-    sv: `cardiac output ${m.co.toFixed(2)} L/min${beat.effect.svRise > 0.05 ? ` · +${beat.effect.svRise.toFixed(1)} mL from slower HR` : ''}`, etScale: `ejection ${m.et.toFixed(0)} ms`,
-    radius: `SVR ${m.svrDyn.toFixed(0)} dyn·s·cm⁻⁵`, cAo: `operating ${m.cAoOp.toFixed(1)} m/s at MAP ${m.map.toFixed(0)}`,
-    diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s`,
-    gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`
+    hr: `ejection ${m.et.toFixed(0)} ms · cycle ${(60000 / act.hr).toFixed(0)} ms${beat.effect.reflexBpm ? ` · baroreflex ${beat.effect.reflexBpm.toFixed(1)} bpm` : ''}${hrNote}`,
+    sv: `cardiac output ${m.co.toFixed(2)} L/min · reference for age/sex/size ${cal.sv.toFixed(0)} mL${beat.effect.svRise > 0.05 ? ` · +${beat.effect.svRise.toFixed(1)} mL from slower HR` : ''}`,
+    etScale: `${etNote} · setting ${act.etScale.toFixed(2)} × Weissler`,
+    radius: `SVR ${m.svrDyn.toFixed(0)} dyn·s·cm⁻⁵`, cAo: `operating ${m.cAoOp.toFixed(1)} m/s at MAP ${m.map.toFixed(0)} · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cAo.toFixed(1)} (${range2(cal.pwvRange, 1)}) m/s`,
+    diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg · predicted ${cal.diam.toFixed(2)} (${range2(cal.diamRange, 2)}) cm`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s`,
+    gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`,
+    sex: `ejection line ${act.sex === 1 ? '418 − 1.6·HR' : '413 − 1.7·HR'} ms`, age: 'sets the calibration only',
+    weight: `BSA ${cal.bsa.toFixed(2)} m² (Du Bois) · BMI ${(p.inputs.weight / Math.pow(p.inputs.height / 100, 2)).toFixed(1)}`
   };
   for (const c of ALL_CONTROLS) $(`#der-${c.key}`).textContent = der[c.key] ?? '';
   const levels = beat.effect.levels.filter(l => l.effect > 0.002 || p.events.some(e => e.drug === l.drug && e.mode === 'infusion' && e.tStop == null));

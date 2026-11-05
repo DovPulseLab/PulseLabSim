@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest';
 import snap from './fixtures/v1-snapshots.json';
 import { simulate } from '../src/model';
 import { applyDrugs } from '../src/model/drugsSteady';
-import { DEFAULTS, DRUGS, PRESETS, type Params } from '../src/config/physiology';
+import { DEFAULTS, DRUGS, PRESETS, isStudyPreset, type Params } from '../src/config/physiology';
+
+// v1 started every profile at the Weissler ejection time (etScale 1.0, 294 ms at 70 bpm);
+// v2 starts at 300 ms. The v1 comparison uses v1's starting value. The healthy study
+// profiles are new in v2 and are checked against reference data in validation tests.
+const V1_DEFAULTS: Params = { ...DEFAULTS, etScale: 1 };
+const V1_PRESETS = Object.keys(PRESETS).filter(n => !isStudyPreset(n));
 
 interface SnapCase {
   label: string;
@@ -32,7 +38,7 @@ function within(key: string, v2: number, v1: number): boolean {
 
 describe('v1 regression snapshots', () => {
   it('covers every preset and every drug', () => {
-    for (const name of Object.keys(PRESETS)) {
+    for (const name of V1_PRESETS) {
       expect(cases.some(c => c.label === `${name} | no drug`)).toBe(true);
       for (const k of Object.keys(DRUGS)) expect(cases.some(c => c.label === `${name} | ${k}`)).toBe(true);
     }
@@ -42,7 +48,7 @@ describe('v1 regression snapshots', () => {
     for (const c of cases) {
       const [name, what] = c.label.split(' | ');
       if (!(name in PRESETS) || what === 'no drug') continue;
-      const base: Params = { ...DEFAULTS, ...PRESETS[name] };
+      const base: Params = { ...V1_DEFAULTS, ...PRESETS[name] };
       const keys = what === 'all drugs' ? Object.keys(DRUGS) : [what];
       const p = applyDrugs(base, keys);
       for (const [k, v] of Object.entries(c.input)) expect(p[k as keyof Params]).toBeCloseTo(v, 6);

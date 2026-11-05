@@ -12,7 +12,7 @@ import { Schematic } from '../schematic';
 
 const ms = (a: number[]) => a.map(v => v * 1000);
 const PT = { A: '--pa', B: '--pb' } as const;
-const tg = { fwd: true, bwd: true, base: true, ann: true };
+const tg = { fwd: true, bwd: true, base: true, ann: true, decay: true };
 let schematic: Schematic | null = null;
 
 export function buildSim(ctx: Ctx): void {
@@ -25,6 +25,7 @@ export function buildSim(ctx: Ctx): void {
         <label><input type="checkbox" data-tg="fwd" checked> Forward</label>
         <label><input type="checkbox" data-tg="bwd" checked> Reflected</label>
         <label><input type="checkbox" data-tg="base" checked> Baseline</label>
+        <label><input type="checkbox" data-tg="decay" checked> Diastolic decay fit</label>
         <label><input type="checkbox" data-tg="ann" checked> Labels</label>
       </div>
     </div>
@@ -76,6 +77,11 @@ function centralConfig(beat: Beat, base: BeatResult | null, onPick?: (s: Series)
   series.push({ x: t, y: pf, color: '--fwd', width: 1.8, dash: [7, 4], label: 'Forward wave', hidden: !tg.fwd, key: 'curve:forward' });
   series.push({ x: t, y: pb, color: '--bwd', width: 1.8, dash: [2, 3], label: 'Reflected wave', hidden: !tg.bwd, key: 'curve:reflected' });
   series.push({ x: t, y: res.p, color: '--comp', width: 2.8, label: 'Measured aortic pressure', key: 'curve:central' });
+  if (tg.decay && Number.isFinite(m.tauFit)) {
+    // fitted P0·e^(−t/τ) over the fit window, extended back to end-ejection (thin) for context
+    const i0 = m.iDecay, xs = t.slice(m.iET), ys = xs.map((_, j) => m.decayP0 * Math.exp(-((m.iET + j - i0) * res.dt) / m.tauFit));
+    series.push({ x: xs, y: ys, color: '--ink-2', width: 1.6, dash: [3, 3], label: `Diastolic decay fit · τ ${m.tauFit.toFixed(2)} s`, key: 'tauFit' });
+  }
   const cfg: ChartConfig = {
     series, xLabel: 'Time (ms)', yLabel: 'Pressure (mmHg)', xMin: 0, xMax: Math.max(res.d.T, base?.d.T ?? 0) * 1000, headroom: 0.22,
     hoverX: v => `${v.toFixed(0)} ms`, hoverFmt: v => `${v.toFixed(1)} mmHg`, shades: [{ x0: 0, x1: m.et }],
