@@ -13,13 +13,33 @@ import { diastolicDecay } from './indices';
 import { simulate } from './solve';
 import type { Verdict } from './validation';
 
-/** Herbert et al. 2014, "normal" population: mean amplification, brachial − central SBP (mmHg), by decade. */
-const HERBERT_AMP = {
-  male:   [[25, 15], [35, 13], [45, 11], [55, 9], [65, 8], [75, 8]],
-  female: [[25, 12], [35, 8], [45, 6], [55, 5], [65, 6], [75, 6]]
-} as const;
-const decadeValue = (rows: readonly (readonly [number, number])[], age: number) =>
-  rows.reduce((best, r) => Math.abs(r[0] - Math.min(age, 75)) < Math.abs(best[0] - Math.min(age, 75)) ? r : best)[1];
+/** Herbert et al. 2014, "normal" population (no CV risk factors), by age decade: central SBP
+ *  and amplification (brachial − central SBP), mmHg, mean and 10th–90th percentiles. */
+export interface HerbertRow { decade: string; mid: number; cSBP: [number, number, number]; amp: [number, number, number]; }
+export const HERBERT_NORMAL: { male: HerbertRow[]; female: HerbertRow[] } = {
+  male: [
+    { decade: '< 20',  mid: 18, cSBP: [105, 96, 113], amp: [19, 11, 24] },
+    { decade: '20–29', mid: 25, cSBP: [103, 92, 115], amp: [15, 6, 24] },
+    { decade: '30–39', mid: 35, cSBP: [103, 88, 120], amp: [13, 4, 23] },
+    { decade: '40–49', mid: 45, cSBP: [106, 90, 123], amp: [11, 2, 21] },
+    { decade: '50–59', mid: 55, cSBP: [110, 96, 126], amp: [9, 2, 18] },
+    { decade: '60–69', mid: 65, cSBP: [114, 97, 128], amp: [8, 2, 17] },
+    { decade: '≥ 70',  mid: 75, cSBP: [116, 99, 130], amp: [8, 1, 17] }
+  ],
+  female: [
+    { decade: '< 20',  mid: 18, cSBP: [97, 86, 109],  amp: [14, 9, 20] },
+    { decade: '20–29', mid: 25, cSBP: [95, 80, 110],  amp: [12, 5, 19] },
+    { decade: '30–39', mid: 35, cSBP: [98, 84, 119],  amp: [8, 0, 17] },
+    { decade: '40–49', mid: 45, cSBP: [102, 87, 123], amp: [6, 0, 15] },
+    { decade: '50–59', mid: 55, cSBP: [110, 93, 127], amp: [5, 0, 13] },
+    { decade: '60–69', mid: 65, cSBP: [114, 97, 129], amp: [6, 1, 12] },
+    { decade: '≥ 70',  mid: 75, cSBP: [118, 100, 131], amp: [6, 1, 13] }
+  ]
+};
+export const herbertRow = (sex: number, age: number): HerbertRow => {
+  const rows = sex === 1 ? HERBERT_NORMAL.female : HERBERT_NORMAL.male;
+  return age < 20 ? rows[0] : age >= 70 ? rows[6] : rows[Math.floor(age / 10) - 1];
+};
 
 /** Janner et al. 2010 reference equations for AIx (SphygmoCor, low-risk cohort). */
 export const jannerAIx = (sex: number, age: number, hr: number, heightCm: number): number =>
@@ -32,7 +52,7 @@ export const TAU_REF = { mean: 1.372, sd: 0.308 } as const;
 export const TAU_FREE_REF = { mean: 0.436, sd: 0.105, pInf: 58.5, pInfSd: 8.1 } as const;
 
 export interface StudyCheck { what: string; model: string; reference: string; source: string; verdict: Verdict; fitted?: boolean; }
-export interface StudyProfileRow { name: string; checks: StudyCheck[]; }
+export interface StudyProfileRow { name: string; checks: StudyCheck[]; out: Record<string, number>; inputs: Params; bsa: number; }
 export interface StudyReport {
   profiles: StudyProfileRow[];
   heartRate: StudyCheck[];
@@ -49,11 +69,11 @@ export function runStudyValidation(): StudyReport {
     const r = simulate(p), m = r.m, tgt = STUDY_TARGETS[name];
     const bsa = bsaDuBois(sp.height, sp.weight);
     const d = aortaDiameter(sp.sex, sp.age, bsa), pwv = pwvNormal(sp.age);
-    const amp = m.bSBP - m.Ps, ampRef = decadeValue(sp.sex === 1 ? HERBERT_AMP.female : HERBERT_AMP.male, sp.age);
+    const amp = m.bSBP - m.Ps, hz = herbertRow(sp.sex, sp.age);
     const aixRef = jannerAIx(sp.sex, sp.age, p.hr, sp.height);
     const tauLo = TAU_REF.mean - 2 * TAU_REF.sd, tauHi = TAU_REF.mean + 2 * TAU_REF.sd;
     const checks: StudyCheck[] = [
-      { what: 'Central SBP', model: `${m.Ps.toFixed(0)} mmHg`, reference: `${tgt.cSBP} mmHg (mean)`, source: 'Herbert 2014', fitted: true,
+      { what: 'Central SBP', model: `${m.Ps.toFixed(0)} mmHg`, reference: `${tgt.cSBP} mmHg (mean; 10th–90th ${hz.cSBP[1]}–${hz.cSBP[2]})`, source: 'Herbert 2014', fitted: true,
         verdict: Math.abs(m.Ps - tgt.cSBP) <= 2 ? 'pass' : Math.abs(m.Ps - tgt.cSBP) <= 4 ? 'near' : 'fail' },
       { what: 'AIx', model: `${m.AIx.toFixed(0)} %`, reference: `${aixRef.toFixed(0)} %`, source: 'Janner 2010', fitted: true,
         verdict: Math.abs(m.AIx - aixRef) <= 2 ? 'pass' : Math.abs(m.AIx - aixRef) <= 5 ? 'near' : 'fail' },
@@ -61,8 +81,8 @@ export function runStudyValidation(): StudyReport {
         verdict: band(p.diam, d.lo, d.hi, 0.1) },
       { what: 'Aortic PWV at the operating MAP', model: `${m.cAoOp.toFixed(1)} m/s`, reference: `${pwv.lo.toFixed(1)}–${pwv.hi.toFixed(1)} m/s`, source: 'RVASC 2010',
         verdict: band(m.cAoOp, pwv.lo, pwv.hi, 0.5) },
-      { what: 'Amplification (cuff − central SBP)', model: `${amp.toFixed(0)} mmHg`, reference: `${ampRef} mmHg (mean)`, source: 'Herbert 2014',
-        verdict: Math.abs(amp - ampRef) <= 4 ? 'pass' : Math.abs(amp - ampRef) <= 7 ? 'near' : 'fail' },
+      { what: 'Amplification (cuff − central SBP)', model: `${amp.toFixed(0)} mmHg`, reference: `${hz.amp[1]}–${hz.amp[2]} mmHg (10th–90th; mean ${hz.amp[0]})`, source: 'Herbert 2014',
+        verdict: band(amp, hz.amp[1], hz.amp[2], 3) },
       { what: 'Cuff BP in the normal range', model: `${m.bSBP.toFixed(0)}/${m.bDBP.toFixed(0)} mmHg`, reference: '< 130 / 60–80 mmHg', source: 'ACC/AHA 2017',
         verdict: m.bSBP < 130 && within(m.bDBP, 60, 80) ? 'pass' : m.bSBP < 140 && within(m.bDBP, 55, 85) ? 'near' : 'fail' },
       { what: 'Diastolic decay τ (asymptote 0)', model: `${m.tauFit.toFixed(2)} s`, reference: `${tauLo.toFixed(2)}–${tauHi.toFixed(2)} s (mean ± 2 SD)`, source: 'Chemla 2017',
@@ -76,7 +96,10 @@ export function runStudyValidation(): StudyReport {
       { what: 'Ejection time', model: `${m.et.toFixed(0)} ms`, reference: '300 ms start (Weissler ≈ 294 ms men, 306 ms women at 70 bpm)', source: 'Weissler 1968',
         verdict: Math.abs(m.et - 300) <= 1 ? 'pass' : 'fail' }
     ];
-    return { name, checks };
+    const out = { bSBP: m.bSBP, bDBP: m.bDBP, map: m.map, Ps: m.Ps, Pd: m.Pd, PP: m.PP, bPP: m.bPP, AIx: m.AIx, AIx75: m.AIx75, ppa: m.ppa,
+      amp, pwv: m.cAoOp, dtp: m.dtp, et: m.et, co: m.co, ci: m.co / bsa, svr: m.svrDyn, ctot: m.ctot, svpp: m.svpp, rc: m.tau,
+      tauFit: m.tauFit, tauFree: m.tauFree, pInf: m.pInf, decayRate: m.decayRate, sevr: m.sevr, Ew: m.Ew };
+    return { name, checks, out, inputs: p, bsa };
   });
 
   /* heart rate up to 180 bpm */

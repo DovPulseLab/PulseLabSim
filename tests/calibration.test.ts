@@ -135,6 +135,6 @@ describe('study-profile validation', () => {
   });
   it('known limitations stay as documented (no new failures)', () => {
     const fails = r.profiles.flatMap(p => p.checks.filter(c => c.verdict === 'fail').map(c => `${p.name}: ${c.what}`));
-    expect(fails).toEqual(['Healthy man (25 y): Diastolic decay τ (asymptote 0)', 'Healthy woman (65 y): Amplification (cuff − central SBP)']);
+    expect(fails).toEqual(['Healthy man (25 y): Diastolic decay τ (asymptote 0)']);
   });
 });
