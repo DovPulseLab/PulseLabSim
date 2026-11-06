@@ -1,5 +1,5 @@
 /* Left control rail: patient A/B, profile, sliders (Heart · Large arteries · Periphery) and Drugs. */
-import { ACUTE_DRUGS, ALL_CONTROLS, ALL_DRUGS, DRUGS, DRUG_EMAX, DRUG_KINETICS, ENGINE, PRESETS, controlText, isStudyPreset, type Control, type ParamKey } from '../config/physiology';
+import { ACUTE_DRUGS, ALL_CONTROLS, baroFraction, ALL_DRUGS, DRUGS, DRUG_EMAX, DRUG_KINETICS, ENGINE, PRESETS, controlText, isStudyPreset, type Control, type ParamKey } from '../config/physiology';
 import { calibrate } from '../model/calibrate';
 import { stepInput } from '../state/inputs';
 import type { PatientId } from '../state/types';
@@ -120,14 +120,16 @@ const drugText = (ctx: Ctx, id: PatientId) => {
   const names = [...new Set(evs.map(e => ALL_DRUGS[e.drug].short))];
   return names.length ? names.join(' + ') : 'no drugs';
 };
-function respNote(r: { mode: number; svFactor: number; svrFactor: number; mapOpen: number; mapSet: number } | null, ins: { hr: number; hrRest: number }): string {
+function respNote(r: { mode: number; svFactor: number; svrFactor: number; mapOpen: number; mapSet: number } | null, ins: { hr: number; hrRest: number; sex: number; age: number }): string {
   if (!r) return 'each input acts on its own';
   const pct = (f: number) => `${f >= 1 ? '+' : '−'}${Math.abs(100 * (f - 1)).toFixed(0)} %`;
   const sv = Math.abs(r.svFactor - 1) > 0.005 ? `SV ${pct(r.svFactor)}` : 'SV unchanged';
   const svr = Math.abs(r.svrFactor - 1) > 0.005 ? `SVR ${pct(r.svrFactor)}` : 'SVR unchanged';
-  if (r.mode === 1) return `cardiac output held: ${sv} at ${ins.hr.toFixed(0)} vs ${ins.hrRest.toFixed(0)} bpm rest`;
-  if (r.mode === 2) return ins.hr > ins.hrRest ? `exercise: ${sv}, ${svr}, MAP target ${r.mapSet.toFixed(0)} mmHg` : 'exercise: acts only above resting HR';
-  return `${sv} · baroreflex ${svr}${Math.abs(r.mapOpen - r.mapSet) < 0.5 ? `, MAP at set point ${r.mapSet.toFixed(0)} mmHg` : `, MAP ${r.mapOpen.toFixed(0)} pulled toward set point ${r.mapSet.toFixed(0)} mmHg`}`;
+  const at = `at ${ins.hr.toFixed(0)} vs ${ins.hrRest.toFixed(0)} bpm rest`;
+  if (r.mode === 1) return `pacing data: ${sv}, ${svr} ${at}`;
+  if (r.mode === 2) return ins.hr > ins.hrRest ? `exercise data: ${sv}, ${svr} ${at}` : 'exercise: acts only above resting HR';
+  const buf = Math.round(100 * baroFraction(ins.sex, ins.age));
+  return `pacing data: ${sv}, ${svr} ${at} · baroreflex buffers ${buf} % of drug effects (${ins.sex === 1 ? 'woman' : 'man'}, ${ins.age.toFixed(0)} y)`;
 }
 
 const shortPreset = (p: string): string => p.replace(/\s*\(.*\)/, '') + (p.match(/\((.*)\)/) ? ', ' + p.match(/\((.*)\)/)![1] : '');

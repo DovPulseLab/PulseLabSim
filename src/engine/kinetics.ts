@@ -3,7 +3,7 @@
    combine in log space (factor^E multiplied), additions scale with E, then inputs are clamped to the slider ranges. Phenylephrine adds a
    baroreflex fall in HR. HR falls caused by acute drugs raise SV slightly (illustrative). All pure. */
 import {
-  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_EMAX, DRUG_KINETICS, MODEL, RESPONSE, SV_HR_COUPLING,
+  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_EMAX, DRUG_KINETICS, MODEL, RESPONSE, SV_HR_COUPLING, baroFraction, exerciseMapSlope, exerciseSvFactor,
   type DrugMode, type Params, type ParamKey
 } from '../config/physiology';
 import { derive } from '../model/derive';
@@ -75,46 +75,49 @@ export interface ResponseEffect {
   mode: number;
   svFactor: number;         // effective SV ÷ SV slider
   svrFactor: number;        // effective SVR ÷ SVR before the response
-  mapOpen: number;          // MAP before the response (mmHg)
-  mapSet: number;           // baroreflex set point, or exercise target (mmHg); NaN if none
+  mapOpen: number;          // MAP after the heart-rate relation, with drugs, before any baroreflex (mmHg)
+  mapSet: number;           // MAP the heart-rate relation gives without drugs (baroreflex target) (mmHg)
 }
 
 /** SVR scale ↔ arteriolar radius (SVR ∝ radius⁻⁴). */
 const radiusForSvr = (radius: number, svrFactor: number) => radius * Math.pow(svrFactor, -0.25);
 
 /** Physiologic response (Params.resp), applied after drugs. `base` = the user's inputs (no drugs).
- *  The SV and exercise couplings follow the heart rate the user set (base.hr, the "pacing rate" or
- *  exercise intensity). Heart-rate changes caused by drugs keep the drugs' own SV effects, so their
- *  pharmacology is not double-counted.
- *  1 Pacing: CO held as the set HR moves from hrRest (SV × hrRest/HR).
- *  2 Exercise: above hrRest SV rises up to +25 % and SVR falls so MAP rises 0.25 %/bpm.
- *  3 Physiologic: pacing-type SV, plus a baroreflex on SVR that corrects 60 % of the MAP change
- *    from the resting state (the user's inputs at hrRest, no drugs). */
-export function applyResponse(params: Params, base: Params): ResponseEffect | null {
+ *  The couplings follow the heart rate the user set (base.hr: the pacing rate or exercise intensity);
+ *  heart-rate changes caused by drugs keep each drug's own SV effect, so pharmacology is not
+ *  double-counted. All constants are from human data (RESPONSE, Methods §13). x = base.hr − hrRest.
+ *  1 Pacing: CO × (1 + 0.033 %·x) (Ross 1965), MAP × (1 + 0.32 %·x) (Lazim 2025) → SV and SVR set to match.
+ *  2 Exercise (x > 0): SV × exerciseSvFactor(x) (Pandey 2020), MAP × (1 + 0.21 %·x) (Wheatley) → SVR to match.
+ *  3 Physiologic: the pacing relation, plus baroreflex buffering of the MAP change caused by drugs:
+ *    SVR × (MAP without drugs / MAP with drugs)^f, f = baroFraction(sex, age) (Jones 2003; Christou 2003, 2005). */
+export function applyResponse(params: Params, base: Params, hasDrugs = true): ResponseEffect | null {
   const mode = Math.round(params.resp);
   if (mode === 0) return null;
-  const hr = Math.max(1, base.hr), hr0 = params.hrRest;
-  let mapBefore = derive(params).map;
+  const hrSet = Math.max(1, base.hr), hr0 = params.hrRest, x = hrSet - hr0;
   let svFactor = 1, svrFactor = 1, mapSet = NaN;
-  if (mode === 1 || mode === 3) svFactor = hr0 / hr;
-  if (mode === 2 && hr > hr0) {
-    const x = hr - hr0;
-    svFactor = 1 + RESPONSE.exSvGain * Math.min(1, x / RESPONSE.exSvSpan);
-    const rest = derive({ ...params, hr: hr0 });
-    mapSet = rest.map * (1 + RESPONSE.exMapPerBpm * x);
-    // MAP = CO·SVR (+ CVP): pick SVR so MAP lands on the target
-    const coRatio = svFactor * params.hr / hr0;
-    svrFactor = mapSet / (rest.map * coRatio);
+  if (mode === 1 || mode === 3) {
+    const coRatio = Math.max(0.5, 1 + RESPONSE.pacingCoPerBpm * x);
+    const mapRatio = Math.max(0.5, 1 + RESPONSE.pacingMapPerBpm * x);
+    svFactor = coRatio * hr0 / hrSet;
+    svrFactor = mapRatio / coRatio;
+  } else if (mode === 2 && x > 0) {
+    svFactor = exerciseSvFactor(x);
+    const mapRatio = 1 + exerciseMapSlope * x;
+    svrFactor = mapRatio / (svFactor * hrSet / hr0);
   }
   params.sv *= svFactor;
-  if (mode === 3) {
-    mapSet = derive({ ...base, hr: hr0, resp: 0 }).map;
-    const open = derive(params).map;
-    mapBefore = open;   // what the baroreflex sees, after the SV response
-    svrFactor = Math.pow(mapSet / open, RESPONSE.baroFraction);
-  }
   params.radius = radiusForSvr(params.radius, svrFactor);
-  return { mode, svFactor, svrFactor, mapOpen: mapBefore, mapSet };
+  const mapOpen = derive(params).map;
+  // MAP the HR relation alone aims for (no drugs), shown in the rail
+  const noDrug: Params = { ...base, sv: base.sv * svFactor, radius: radiusForSvr(base.radius, svrFactor) };
+  mapSet = derive(noDrug).map;
+  if (mode === 3 && hasDrugs) {
+    const f = baroFraction(params.sex, params.age);
+    const k = Math.pow(mapSet / mapOpen, f);
+    params.radius = radiusForSvr(params.radius, k);
+    svrFactor *= k;
+  }
+  return { mode, svFactor, svrFactor, mapOpen, mapSet };
 }
 
 const RANGE: Partial<Record<ParamKey, [number, number]>> =
@@ -183,7 +186,7 @@ export function applyDrugEffects(base: Params, events: readonly DrugEvent[], t: 
     params.sv *= Math.pow(hrRef / hrAfter, SV_HR_COUPLING.exponent);
     svRise = params.sv - sv0;
   }
-  const response = applyResponse(params, base);
+  const response = applyResponse(params, base, levels.some(l => l.effect > 0));
   const clamped = clampToRanges(params);
   return { params, levels, reflexBpm, svRise, clamped, response };
 }

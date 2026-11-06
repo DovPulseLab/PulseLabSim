@@ -1,6 +1,6 @@
-/* v2.3: physiologic response modes. */
+/* v2.3: physiologic response modes, set from human data. */
 import { describe, expect, it } from 'vitest';
-import { DEFAULTS, PRESETS } from '../src/config/physiology';
+import { DEFAULTS, PRESETS, RESPONSE, baroFraction, exerciseSvFactor } from '../src/config/physiology';
 import { applyDrugEffects } from '../src/engine/kinetics';
 import { simulate } from '../src/model';
 import { runStudyValidation } from '../src/model/validationStudy';
@@ -19,23 +19,30 @@ describe('physiologic response modes', () => {
       expect(e.params.sv).toBeCloseTo(DEFAULTS.sv, 9); expect(e.params.radius).toBeCloseTo(DEFAULTS.radius, 9);
     }
   });
-  it('Pacing holds cardiac output exactly', () => {
-    for (const hr of [50, 90, 130]) {
-      const e = eff({ hr, resp: 1 });
-      expect(e.params.sv * hr).toBeCloseTo(DEFAULTS.sv * DEFAULTS.hrRest, 6);
-    }
+  it('Pacing reproduces Ross 1965 cardiac output and Lazim 2025 MAP', () => {
+    const a = simulate(eff({ hr: 80, hrRest: 80, resp: 1 }).params).m, b = simulate(eff({ hr: 121, hrRest: 80, resp: 1 }).params).m;
+    expect(b.co / a.co).toBeCloseTo(3.72 / 3.67, 3);
+    const c = simulate(eff({ resp: 1 }).params).m, d = simulate(eff({ hr: 90, resp: 1 }).params).m;
+    expect(d.map / c.map).toBeCloseTo(102.02 / 95.95, 2);
   });
-  it('Exercise lands MAP on its target', () => {
-    const e = eff({ hr: 120, resp: 2 });
-    expect(simulate(e.params).m.map).toBeCloseTo(e.response!.mapSet, 0);
-    expect(e.params.sv).toBeGreaterThan(DEFAULTS.sv);
-    expect(e.params.radius).toBeGreaterThan(DEFAULTS.radius);
+  it('Exercise SV follows Pandey 2020', () => {
+    expect(exerciseSvFactor(24)).toBeCloseTo(51 / 37, 9);
+    expect(exerciseSvFactor(91)).toBeCloseTo(49 / 37, 9);
+    expect(exerciseSvFactor(200)).toBeCloseTo(49 / 37, 9);
+  });
+  it('baroreflex buffering follows ganglionic-blockade data', () => {
+    expect(baroFraction(0, 25)).toBeCloseTo(1 - 1 / 3.5, 9);
+    expect(baroFraction(0, 65)).toBeCloseTo(1 - 1 / 1.6, 9);
+    expect(baroFraction(1, 25)).toBeLessThan(baroFraction(0, 25));
+    expect(RESPONSE.baro.womenExcessRatio).toBeCloseTo(2.3 / 5.3, 9);
   });
   it('profiles set the resting HR to their own HR', () => {
     expect(PRESETS['Young adult (20 y)'].hrRest).toBe(64);
     expect(PRESETS['Healthy woman (45 y)'].hrRest).toBe(70);
   });
-  it('validation checks pass', () => {
-    for (const c of runStudyValidation().response) expect(c.verdict, c.what).toBe('pass');
+  it('fitted and consistency rows pass; prediction results are pinned so changes are noticed', () => {
+    const rows = runStudyValidation().response;
+    for (const c of rows.filter(r => r.kind !== 'data')) expect(c.verdict, c.what).toBe('pass');
+    expect(rows.filter(r => r.kind === 'data').map(r => r.verdict)).toEqual(['pass', 'fail', 'pass', 'fail', 'near', 'fail', 'near']);
   });
 });

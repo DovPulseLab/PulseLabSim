@@ -22,7 +22,18 @@ const SUMMARY: [string, string, number][] = [
   ['pInf', 'Decay asymptote P∞ (mmHg)', 0], ['decayRate', 'Decay rate (mmHg/s)', 0], ['sevr', 'SEVR (%)', 0], ['Ew', 'Wasted energy ΔEw (×10³ dyn·s/cm²)', 1]
 ];
 const shortName = (n: string) => n.replace('Healthy man (', 'M ').replace('Healthy woman (', 'F ').replace(' y)', '');
-const checkRows = (cs: StudyCheck[]) => cs.map(c => `<tr><td>${c.what}${c.fitted ? ' <span class="muted">(fitted)</span>' : ''}</td><td class="n">${c.model}</td><td>${c.reference}</td><td>${c.source}</td><td>${c.fitted ? '<span class="muted">target</span>' : V.study[c.verdict]}</td></tr>`).join('');
+const KIND: Record<string, string> = {
+  fitted: '<span class="kind k-fit" title="The model or rule was set from this data; the row shows it reproduces it. Not evidence of validity.">fitted to data</span>',
+  data: '<span class="kind k-data" title="A prediction compared with published data the model was not set from.">prediction vs data</span>',
+  typical: '<span class="kind k-typ" title="Compared with a textbook normal range, not a single cited dataset.">textbook range</span>',
+  consistency: '<span class="kind k-con" title="Internal check that the code does what Methods says (definition, mass balance, theory).">consistency</span>'
+};
+const kindOf = (c: StudyCheck) => c.kind ?? (c.fitted ? 'fitted' : 'data');
+const CHECK_HEAD = '<tr><th>Check</th><th>Type</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>';
+const checkRows = (cs: StudyCheck[]) => cs.map(c => `<tr><td>${c.what}</td><td>${KIND[kindOf(c)]}</td><td class="n">${c.model}</td><td>${c.reference}</td><td>${c.source}</td><td>${c.fitted ? '<span class="muted">target</span>' : V.study[c.verdict]}</td></tr>`).join('');
+/** Pass / near / outside counts for the prediction-vs-data rows only. */
+const dataScore = (cs: StudyCheck[]) => { const d = cs.filter(c => kindOf(c) === 'data'); const n = (v: string) => d.filter(c => c.verdict === v).length;
+  return d.length ? `Predictions vs data: <span class="pass">${n('pass')} in range</span>, <span class="near">${n('near')} near</span>, <span class="fail">${n('fail')} outside</span> (of ${d.length}).` : 'No prediction-vs-data rows in this section.'; };
 
 let validDone = false, eqDone = false;
 
@@ -61,6 +72,8 @@ export function renderValidation(): void {
   </div>
   <div class="card prose" style="max-width:none">
     <h2>5 · Healthy study profiles vs reference data (v2.1)</h2>
+    <p class="fine"><b>How to read sections 5–8.</b> Each row has a type. Only <i>prediction vs data</i> rows test the model against evidence it was not built from. <i>Fitted to data</i> rows show a rule reproduces the numbers it was set from. <i>Textbook range</i> rows compare with a general normal range. <i>Consistency</i> rows check the code does what Methods says. The verdict for the last three types is not evidence that the model is clinically valid.</p>
+    <p>${dataScore(s5.profiles.flatMap(p => p.checks))}</p>
     <p>Each profile is calibrated from sex, age, height and weight (aortic diameter, aortic PWV, stroke volume; see Methods §9). Two inputs were then fitted: SVR to central SBP and Γ to AIx, marked <i>fitted</i>. Every other row is a model prediction compared with healthy-adult data it was not fitted to. "Near" means just outside the reference range.</p>
     <h3>Model outputs, all eight profiles</h3>
     <div class="table-wrap"><table class="vt"><tr><th>Output</th>${s5.profiles.map(p => `<th>${shortName(p.name)}</th>`).join('')}</tr>
@@ -68,22 +81,25 @@ export function renderValidation(): void {
     <tr><td><b>Checks: in range / near / outside</b></td>${s5.profiles.map(p => { const c = p.checks.filter(x => !x.fitted); const n = (v: string) => c.filter(x => x.verdict === v).length;
       return `<td class="n"><span class="pass">${n('pass')}</span> / <span class="near">${n('near')}</span> / <span class="fail">${n('fail')}</span></td>`; }).join('')}</tr></table></div>
     <p class="fine">M = man, F = woman, number = age. Heart rate 70 bpm in every profile. Inputs and the reference tables are on the Methods tab (§9).</p>
-    ${s5.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows(p.checks)}</table></div>`).join('')}
+    ${s5.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(p.checks)}</table></div>`).join('')}
     <div class="note">Known limitations, also listed in Methods: amplification sits at the top of the normal range in the 65- and 80-year-old profiles, and just above the 90th percentile in the 65-year-old woman (one fixed arm transfer function); cuff DBP is ≈ 60–63 mmHg at 65–80 y; the zero-asymptote decay τ is longer than the invasive mean in the young profiles, while the fitted-asymptote τ is a little short at 65–80 y. Use these profiles for trends and comparisons between groups, and enter each subject's own height, weight, heart rate and measured values where you have them.</div>
   </div>
   <div class="card prose" style="max-width:none">
     <h2>6 · Heart rate to 180 bpm and diastolic decay (v2.1)</h2>
-    <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows([...s5.heartRate, ...s5.decay])}</table></div>
+    <p>${dataScore([...s5.heartRate, ...s5.decay])}</p>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows([...s5.heartRate, ...s5.decay])}</table></div>
   </div>
   <div class="card prose" style="max-width:none">
     <h2>7 · Cardiac cycle diagram (v2.2)</h2>
+    <p>${dataScore(s5.cycle)} The schematic curves are not derived from a dataset, so this section shows consistency and textbook ranges only.</p>
     <p>The Wiggers diagram combines the model's aortic pressure and flow with schematic LV, left-atrial and volume curves (Methods §12). These checks confirm the schematic parts stay consistent with the modelled beat and give normal timings. Default adult at 70 bpm; the last row at 180 bpm with cardiac output held.</p>
-    <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows(s5.cycle)}</table></div>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.cycle)}</table></div>
   </div>
   <div class="card prose" style="max-width:none">
     <h2>8 · Physiologic response modes (v2.3)</h2>
-    <p>The <i>Physiologic response</i> setting (Methods §13) decides what else changes when heart rate or a drug changes. Independent keeps every input on its own; the other modes add typical responses. Default adult, resting heart rate 70 bpm.</p>
-    <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows(s5.response)}</table></div>
+    <p>Each mode's coefficients are set from published human data (Methods §13); the <i>fitted to data</i> rows confirm they reproduce those numbers. The <i>prediction vs data</i> rows test what the model then does with them. ${dataScore(s5.response)}</p>
+    <p class="fine"><b>Where it misses, and why.</b> With pacing, the model's cuff SBP barely rises (Wilkinson 2000 found it rose) and its aortic PWV rises 0.6 m/s because PWV depends on pressure in the model (Wilkinson 2002 found no change). With exercise, stroke volume follows Pandey (+38 %) but MAP follows Wheatley, whose subjects' stroke volume rose only ≈ 4 %; the model therefore needs a larger fall in SVR than Wheatley measured, and its diastolic pressure falls (−4 to −14 mmHg) where Wheatley's stayed about level. Treat exercise diastolic pressure above ≈ 130 bpm with caution.</p>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.response)}</table></div>
   </div>`;
 }
 

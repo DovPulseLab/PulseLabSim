@@ -406,3 +406,8 @@ body.present .bottom { grid-template-columns: minmax(0, 1fr); }
 .cyc-now .paused-tag { padding: 2px 8px; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; }
 .cyc-show { margin-top: 8px; }
 #cCycle { cursor: crosshair; }
+.kind { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: .78em; white-space: nowrap; border: 1px solid var(--line); color: var(--ink-2); }
+.kind.k-data { border-color: var(--brach); color: var(--brach); font-weight: 600; }
+.kind.k-fit { border-color: var(--fwd); color: var(--fwd); }
+.kind.k-typ { color: var(--ink-3); }
+.kind.k-con { color: var(--ink-3); border-style: dashed; }

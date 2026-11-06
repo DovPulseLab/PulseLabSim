@@ -164,7 +164,7 @@ export const CONTROLS: ControlGroup[] = [
       tip: 'Left-ventricular ejection time (LVET) in ms. It follows heart rate through the Weissler relation (LVET ≈ 413 − 1.7·HR ms in men, 418 − 1.6·HR in women), so changing HR changes it; the slider sets how far this patient sits from that line (0.8–1.2 ×). Longer ejection keeps the ventricle exposed to the returning reflected wave for longer (larger Δtr and wasted energy).' }
   ]},
   { group: 'Arterioles (resistance)', color: 'var(--ink-3)', items: [
-    { key: 'radius', label: 'Arteriolar radius', min: 75, max: 125, step: 0.5, unit: '%', f: 1,
+    { key: 'radius', label: 'Arteriolar radius', min: 75, max: 140, step: 0.5, unit: '%', f: 1,
       tip: 'Poiseuille: R = 8μL/πr⁴, so SVR scales with radius⁻⁴. A 10 % increase in radius lowers SVR by ~32 %. Mainly moves mean pressure (MAP = CO × SVR).' }
   ]},
   { group: 'Elastic arteries (aorta)', color: 'var(--fwd)', items: [
@@ -183,7 +183,7 @@ export const CONTROLS: ControlGroup[] = [
   ]},
   { group: 'Physiologic response', color: 'var(--accent)', items: [
     { key: 'resp', label: 'When HR or drugs change', min: 0, max: 3, step: 1, unit: '', f: 0, kind: 'toggle', options: ['Independent', 'Pacing', 'Exercise', 'Physiologic'], model: false,
-      tip: 'Independent: every input acts alone (for studying one variable at a time). Pacing: cardiac output is held as heart rate changes, so stroke volume falls when HR rises (shorter filling). Exercise: above resting HR, stroke volume rises up to 25 % and SVR falls so MAP rises only ≈ 2.5 % per 10 bpm. Physiologic: pacing-type stroke volume plus a baroreflex that corrects 60 % of any change in MAP from HR or drugs by adjusting SVR.' },
+      tip: 'Independent: every input acts alone (for studying one variable at a time). Pacing: as measured during atrial pacing, cardiac output stays almost constant (Ross 1965) and MAP rises ≈ 3 % per 10 bpm (Lazim 2025). Exercise: as measured in upright cycling, stroke volume rises ≈ 38 % in early exercise then plateaus (Pandey 2020) and MAP rises ≈ 2 % per 10 bpm (Wheatley), so SVR falls. Physiologic: the pacing relation for heart rate, plus baroreflex buffering of drug effects measured by ganglionic blockade (≈ 70 % in young men, ≈ 38 % at 65 y, less in women; Jones 2003, Christou 2003 and 2005).' },
     { key: 'hrRest', label: 'Resting heart rate (reference)', min: 40, max: 120, step: 1, unit: 'bpm', f: 0, model: false,
       tip: 'The heart rate the stroke-volume slider and the baroreflex set-point refer to. With Pacing, Exercise or Physiologic on, the SV slider means stroke volume at this heart rate. Loading a profile sets it to the profile\'s heart rate.' }
   ]},
@@ -357,16 +357,51 @@ export const SV_HR_COUPLING = { exponent: 0.5, illustrative: true } as const;
 
 export const BAROREFLEX = { drug: 'phe', bpmPerMmHg: 0.3, maxFall: 20 } as const;
 
-/** Physiologic response modes (Params.resp). Applied in the live engine after drugs. */
+/** Physiologic response modes (Params.resp). Applied in the live engine after drugs.
+ *  Every number below is taken from published human data (see Methods §13). x = set HR − resting HR. */
 export const RESPONSE = {
   modes: ['Independent', 'Pacing', 'Exercise', 'Physiologic'] as const,
-  /** Exercise: SV rises by up to 25 % over the first 50 bpm above rest, then plateaus */
-  exSvGain: 0.25, exSvSpan: 50,
-  /** Exercise: MAP rises 0.25 % per bpm above rest (≈ +20 % at +80 bpm); SVR falls to match */
-  exMapPerBpm: 0.0025,
-  /** Physiologic: fraction of a MAP change from HR or drugs the baroreflex corrects (closed-loop gain ≈ 1.5) */
-  baroFraction: 0.6
+  /** Pacing, cardiac output: right-atrial pacing 80 → 121 bpm at rest, cardiac index 3.67 → 3.72 L/min/m²
+   *  (Ross, Linhart & Braunwald 1965): +1.36 % over 41 bpm. */
+  pacingCoPerBpm: (3.72 / 3.67 - 1) / 41,
+  /** Pacing, MAP: brachial MAP 95.95 → 102.02 mmHg, paced 70 → 90 bpm (Lazim et al. 2025; rise also
+   *  reported by Wilkinson et al. 2000): +6.3 % over 20 bpm. */
+  pacingMapPerBpm: (102.02 / 95.95 - 1) / 20,
+  /** Exercise, stroke volume index (upright cycling, invasive; Pandey et al. 2020, n = 104, 20–76 y):
+   *  rest 37 mL/m² at HR 77 → 51 at HR 101 (50 W) → 49 at HR 168 (peak). */
+  exSv: { rest: 37, sub: 51, peak: 49, hrRest: 77, hrSub: 101, hrPeak: 168 },
+  /** Exercise, MAP (upright cycling, intra-arterial; Wheatley et al.): 96.1 → 107.4 mmHg at HR 81 → 133
+   *  and 116.2 mmHg at HR 183. Least-squares slope through rest: 0.21 % per bpm. */
+  exMap: { rest: 96.1, low: 107.4, mod: 116.2, hrRest: 81, hrLow: 133, hrMod: 183 },
+  /** Baroreflex buffering (potentiation of the pressor response to phenylephrine infusion during vs
+   *  before ganglionic blockade, BRB; buffered fraction = 1 − 1/BRB).
+   *  Men: 3.5 at 25 y and 1.6 at 65 y (Jones et al. 2003); 2.65 at 41 y (mean of 2.5 and 2.8,
+   *  Christou et al. 2003). Women: BRB 47 % smaller than men at 27–28 y (bolus 3.3 vs 6.3; Christou
+   *  et al. 2005); applied as the same share of the excess over 1 at every age (an assumption). */
+  baro: { menAge: [25, 41, 65], menBrb: [3.5, 2.65, 1.6], womenExcessRatio: (3.3 - 1) / (6.3 - 1) }
 } as const;
+
+/** Exercise SV factor vs x (bpm above rest): linear to the 50 W value, then linear to the peak value. */
+export function exerciseSvFactor(x: number): number {
+  const s = RESPONSE.exSv, x1 = s.hrSub - s.hrRest, x2 = s.hrPeak - s.hrRest;
+  if (x <= 0) return 1;
+  const f1 = s.sub / s.rest, f2 = s.peak / s.rest;
+  return x <= x1 ? 1 + (f1 - 1) * x / x1 : f1 + (f2 - f1) * Math.min(1, (x - x1) / (x2 - x1));
+}
+/** Exercise MAP ratio vs x: least-squares line through the origin of Wheatley's two exercise stages. */
+export const exerciseMapSlope = (() => {
+  const m = RESPONSE.exMap;
+  const xs = [m.hrLow - m.hrRest, m.hrMod - m.hrRest], ys = [m.low / m.rest - 1, m.mod / m.rest - 1];
+  return (xs[0] * ys[0] + xs[1] * ys[1]) / (xs[0] ** 2 + xs[1] ** 2);
+})();
+/** Baroreflex buffered fraction for a sex and age (0 = none, 1 = complete). */
+export function baroFraction(sex: number, age: number): number {
+  const b = RESPONSE.baro, a = b.menAge, v = b.menBrb;
+  let brb = age <= a[0] ? v[0] : age >= a[2] ? v[2]
+    : age <= a[1] ? v[0] + (v[1] - v[0]) * (age - a[0]) / (a[1] - a[0]) : v[1] + (v[2] - v[1]) * (age - a[1]) / (a[2] - a[1]);
+  if (sex === 1) brb = 1 + (brb - 1) * b.womenExcessRatio;
+  return 1 - 1 / brb;
+}
 
 /** Live engine settings. */
 export const ENGINE = {
@@ -392,6 +427,15 @@ export const CITATIONS = {
   Janner2010: 'Janner JH, Godtfredsen NS, Ladelund S, Vestbo J, Prescott E. Aortic augmentation index: reference values in a large unselected population by means of the SphygmoCor device. Am J Hypertens 2010;23:180–185.',
   Chemla2017: 'Chemla D, et al. Influence of critical closing pressure on systemic vascular resistance and total arterial compliance: a clinical invasive study. 2017; PMID 28958408.',
   Yamakado2018: 'Yamakado T. Effect of aging on the pressure asymptote and time constant of exponential diastolic aortic pressure decay in humans. Artery Res 2018;24:82 (abstract P11).',
+  Ross1965: 'Ross J Jr, Linhart JW, Braunwald E. Effects of changing heart rate in man by electrical stimulation of the right atrium: studies at rest, during exercise, and with isoproterenol. Circulation 1965;32:549–558.',
+  Lazim2025: 'Lazim MRML, Chellappan K, Ugusman A, et al. The influence of heart rate on peripheral vascular function among pacemaker patients. Int J Med Sci 2025;22:309–317.',
+  Wilkinson2000: 'Wilkinson IB, MacCallum H, Flint L, Cockcroft JR, Newby DE, Webb DJ. The influence of heart rate on augmentation index and central arterial pressure in humans. J Physiol 2000;525:263–270.',
+  Wilkinson2002: 'Wilkinson IB, Mohammad NH, Tyrrell S, et al. Heart rate dependency of pulse pressure amplification and arterial stiffness. Am J Hypertens 2002;15:24–30.',
+  Pandey2020: 'Pandey A, Kraus WE, Brubaker PH, Kitzman DW. Healthy aging and cardiovascular function: invasive hemodynamics during rest and exercise in 104 healthy volunteers. JACC Heart Fail 2020;8:111–121.',
+  Wheatley: 'Wheatley CM, Snyder EM, Joyner MJ, Johnson BD, Olson TP. Intra-arterial versus cuff auscultation blood pressure at rest and during submaximal exercise in healthy young adults (PMC12431019).',
+  Jones2003: 'Jones PP, Christou DD, Jordan J, Seals DR. Baroreflex buffering is reduced with age in healthy men. Circulation 2003;107:1770–1774.',
+  Christou2003: 'Christou DD, Jones PP, Seals DR. Baroreflex buffering in sedentary and endurance exercise-trained healthy men. Hypertension 2003; doi:10.1161/01.HYP.0000072011.17095.ae.',
+  Christou2005: 'Christou DD, Jones PP, Jordan J, Diedrich A, Robertson D, Seals DR. Women have lower tonic autonomic support of arterial blood pressure and less effective baroreflex buffering than men. Circulation 2005;111:494–498.',
   DuBois1916: 'Du Bois D, Du Bois EF. A formula to estimate the approximate surface area if height and weight be known. Arch Intern Med 1916;17:863–871.',
   Liu1986: 'Liu Z, Brin KP, Yin FC. Estimation of total arterial compliance: an improved method and evaluation of current methods. Am J Physiol 1986;251:H588–H600.'
 } as const;
