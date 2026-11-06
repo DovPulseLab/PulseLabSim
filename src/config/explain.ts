@@ -18,8 +18,8 @@ interface Extra { formula?: string; normal?: string; node?: string; cite?: strin
 
 const C = CITATIONS;
 const EXTRA: Record<string, Extra> = {
-  bSBP: { formula: 'max of the brachial wave = central wave × arm transfer function', normal: '< 130 mmHg (ACC/AHA 2017)', node: 'bsbp', cite: C.T2015a },
-  bDBP: { formula: 'min of the brachial wave', normal: '< 80 mmHg', node: 'dbp', cite: C.T2015a },
+  bSBP: { formula: 'cuff SBP = max of the brachial wave − 5.7 mmHg (Picone 2017); brachial wave = central wave × arm transfer function', normal: '< 130 mmHg (ACC/AHA 2017)', node: 'bsbp', cite: C.T2015a },
+  bDBP: { formula: 'cuff DBP = min of the brachial wave + 5.5 mmHg (Picone 2017)', normal: '< 80 mmHg', node: 'dbp', cite: C.T2015a },
   bPP: { formula: 'brachial SBP − DBP', normal: '≈ 40–60 mmHg', node: 'bsbp', cite: C.T2015a },
   map: { formula: 'MAP = CO × SVR / 80 + CVP  (CVP = 0 in this model)', normal: '70–100 mmHg', node: 'map', cite: C.NE2001 },
   Ps: { formula: 'peak of the central aortic wave', normal: '≤ 124 mmHg', node: 'sbp', cite: C.T2015a },

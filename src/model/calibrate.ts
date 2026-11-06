@@ -13,7 +13,10 @@
      no sex term.
    - Stroke volume: Maceira AM, et al. J Cardiovasc Magn Reson 2006;8:417–426,
      Tables 2–3, SSFP CMR, SV/BSA by age decile, men and women. CMR SV runs higher than
-     Doppler SV; see Methods. */
+     Doppler SV; see Methods.
+   - Muscular (arm) PWV: Avolio AP, et al. Circulation 1983;68:50–58 — upper-limb PWV rises
+     0.048 m/s per year of age (4.8·age + 998 cm/s). The slope is used, anchored at the v1
+     value of 9.0 m/s for a 45-year-old, because absolute arm PWV depends on the method. */
 import type { Params } from '../config/physiology';
 
 export type Sex = 0 | 1;   // 0 = male, 1 = female
@@ -81,8 +84,13 @@ export const CALIB = {
   svScale: 0.70
 } as const;
 
+/** Muscular-artery PWV (m/s) at a given age: Avolio 1983 slope, v1 anchor at 45 y. */
+export const MUS_PWV = { slope: 0.048, anchorAge: 45, anchor: 9.0 } as const;
+export const musPWV = (age: number): number => MUS_PWV.anchor + MUS_PWV.slope * (age - MUS_PWV.anchorAge);
+
 export interface Calibration {
   bsa: number;
+  cMus: number;
   diam: number; diamRange: [number, number];
   cAo: number; pwvRange: [number, number];
   sv: number; svi: number;
@@ -98,12 +106,13 @@ export function calibrate(p: Pick<Params, 'sex' | 'age' | 'height' | 'weight'>):
     bsa,
     diam: d.mean, diamRange: [d.lo, d.hi],
     cAo: pwv.mean, pwvRange: [pwv.lo, pwv.hi],
-    sv: svi * bsa, svi
+    sv: svi * bsa, svi,
+    cMus: musPWV(p.age)
   };
 }
 
 /** Inputs that calibration sets. */
-export const CALIBRATED_KEYS = ['diam', 'cAo', 'sv'] as const;
+export const CALIBRATED_KEYS = ['diam', 'cAo', 'sv', 'cMus'] as const;
 /** Inputs whose change triggers calibration. */
 export const DEMOGRAPHIC_KEYS = ['sex', 'age', 'height', 'weight'] as const;
 
@@ -114,6 +123,7 @@ export function applyCalibration(p: Params): Params {
     ...p,
     diam: Number((Math.round(c.diam / 0.05) * 0.05).toFixed(2)),
     cAo: Math.round(c.cAo * 10) / 10,
-    sv: Math.round(c.sv)
+    sv: Math.round(c.sv),
+    cMus: Math.round(c.cMus * 10) / 10
   };
 }

@@ -65,6 +65,10 @@ export const MODEL = {
   ztOverZc: 2.6,            // terminal impedance step Zt = 2.6·Zc
   ztMaxFracSvr: 0.8,        // ...but no more than 0.8·SVR
   gammaRef: 0.5,            // kRefl = Γ / 0.5
+  cuff: { sbp: 5.7, dbp: 5.5 },  // cuff − intra-arterial brachial offsets, mmHg (Picone 2017)
+  pzfFrac: 0.6,             // zero-flow pressure / MAP (v2.5): study-profile mean P∞ 58 vs 58.5 mmHg (Yamakado 2018)
+  rTermMinFrac: 0.05,
+  reflFc: 2.0,              // Hz, Windkessel → dispersed-reflection crossover (v2.5; results change < 1 mmHg RMS over 1.5–3 Hz)
   gMax: 0.97,               // cap on |G(ω)|
   damp: 0.055,              // attenuation per Hz per round trip
   armLenPerHeight: 0.42,    // aortic root → radial, × height
@@ -77,6 +81,16 @@ export const MODEL = {
   typeAThreshold: 0.12,     // AP/PP above this → Murgo type A
   p2Window: 0.08            // s after echo arrival to search for P2
 } as const;
+
+/** Model generation. v2.5 adds three physiologic pieces to the v1 solver:
+ *  - reflection: Γ scales reflection at the higher harmonics only; near 0 Hz the load is
+ *    the full Windkessel (reflScale in solve.ts), so diastole decays as R·C predicts;
+ *  - zero-flow pressure: the arterioles drain toward Pzf = MODEL.pzfFrac × MAP, not 0
+ *    (critical closing pressure; Chemla 2017, Yamakado 2018);
+ *  - cuff: bSBP/bDBP are what a cuff reads, intra-arterial − 5.7 / + 5.5 mmHg (Picone 2017).
+ *  'v1' switches all three off so tests/regression.test.ts can prove the port reproduces v1. */
+export const LAWS: { gen: 'v2.5' | 'v1' } = { gen: 'v2.5' };
+export function useV1Laws(on = true): void { LAWS.gen = on ? 'v1' : 'v2.5'; }
 
 /** Default ejection duration at the default HR (ms). etScale is stored so that ejection
  *  still follows HR through the Weissler relation; the slider shows milliseconds. */
@@ -176,9 +190,9 @@ export const CONTROLS: ControlGroup[] = [
       tip: 'Larger lumen lowers Zc (Zc = ρc/A) and adds compliance — the aorta dilates with age, partly offsetting stiffening.' }
   ]},
   { group: 'Muscular arteries & reflection', color: 'var(--bwd)', items: [
-    { key: 'cMus', label: 'Muscular-artery PWV', min: 5, max: 14, step: 0.1, unit: 'm/s', f: 1,
+    { key: 'cMus', label: 'Muscular-artery PWV', min: 4, max: 14, step: 0.1, unit: 'm/s', f: 1,
       tip: 'Smooth-muscle tone of the muscular conduits (femoral, popliteal, brachial). Vasodilators lower it, delaying the reflected wave (Nichols & Singh 2002). Also sets arm-wave speed (amplification).' },
-    { key: 'gamma', label: 'Reflection coefficient Γ', min: 0.1, max: 0.9, step: 0.01, unit: '', f: 2,
+    { key: 'gamma', label: 'Reflection coefficient Γ', min: 0.05, max: 0.9, step: 0.01, unit: '', f: 2,
       tip: 'Fraction of the forward wave reflected at the effective reflection site (impedance mismatch). Vasodilators lower it; vasoconstrictors raise it.' },
     { key: 'lpScale', label: 'Reflection-site position', min: 0.7, max: 1.5, step: 0.01, unit: '×', f: 2,
       tip: 'Scales the effective distance to the major reflection site (Lp = 0.27 × height × factor). Values > 1 shift the site distally (as described in youth).' }
@@ -219,27 +233,29 @@ export const ALL_CONTROLS: Control[] = CONTROLS.flatMap(g => g.items);
    Everything else (DBP, PP, amplification, PWV at the operating MAP, diastolic decay,
    SEVR) is a model prediction, checked on the Validation tab.
    Ejection duration starts at 300 ms (etScale = 300 / Weissler LVET at 70 bpm). */
-export interface StudyProfile { sex: 0 | 1; age: number; height: number; weight: number; diam: number; cAo: number; sv: number; radius: number; gamma: number; }
+export interface StudyProfile { sex: 0 | 1; age: number; height: number; weight: number; diam: number; cAo: number; sv: number; cMus: number; radius: number; gamma: number; }
 export const STUDY_PROFILES: Record<string, StudyProfile> = {
-  'Healthy man (25 y)':   { sex: 0, age: 25, height: 177, weight: 75, diam: 2.70, cAo: 6.2,  sv: 75, radius: 103.5, gamma: 0.30 },
-  'Healthy man (45 y)':   { sex: 0, age: 45, height: 176, weight: 77, diam: 3.00, cAo: 7.2,  sv: 73, radius: 102.5, gamma: 0.33 },
-  'Healthy man (65 y)':   { sex: 0, age: 65, height: 174, weight: 75, diam: 3.20, cAo: 10.3, sv: 69, radius: 101.5, gamma: 0.31 },
-  'Healthy man (80 y)':   { sex: 0, age: 80, height: 171, weight: 71, diam: 3.30, cAo: 10.9, sv: 65, radius: 99.5,  gamma: 0.34 },
-  'Healthy woman (25 y)': { sex: 1, age: 25, height: 163, weight: 61, diam: 2.45, cAo: 6.2,  sv: 63, radius: 102,   gamma: 0.36 },
-  'Healthy woman (45 y)': { sex: 1, age: 45, height: 162, weight: 62, diam: 2.75, cAo: 7.2,  sv: 59, radius: 98,    gamma: 0.43 },
-  'Healthy woman (65 y)': { sex: 1, age: 65, height: 160, weight: 61, diam: 2.90, cAo: 10.3, sv: 55, radius: 96,    gamma: 0.37 },
-  'Healthy woman (80 y)': { sex: 1, age: 80, height: 157, weight: 58, diam: 2.95, cAo: 10.9, sv: 52, radius: 94,    gamma: 0.36 }
+  'Healthy man (25 y)':   { sex: 0, age: 25, height: 177, weight: 75, diam: 2.70, cAo: 6.2,  sv: 75, cMus: 8.0, radius: 102,   gamma: 0.15 },
+  'Healthy man (45 y)':   { sex: 0, age: 45, height: 176, weight: 77, diam: 3.00, cAo: 7.2,  sv: 73, cMus: 9.0, radius: 101.5, gamma: 0.24 },
+  'Healthy man (65 y)':   { sex: 0, age: 65, height: 174, weight: 75, diam: 3.20, cAo: 10.3, sv: 69, cMus: 10.0, radius: 103,   gamma: 0.26 },
+  'Healthy man (80 y)':   { sex: 0, age: 80, height: 171, weight: 71, diam: 3.30, cAo: 10.9, sv: 65, cMus: 10.7, radius: 100.5, gamma: 0.29 },
+  'Healthy woman (25 y)': { sex: 1, age: 25, height: 163, weight: 61, diam: 2.45, cAo: 6.2,  sv: 63, cMus: 8.0, radius: 100.5, gamma: 0.28 },
+  'Healthy woman (45 y)': { sex: 1, age: 45, height: 162, weight: 62, diam: 2.75, cAo: 7.2,  sv: 59, cMus: 9.0, radius: 98,    gamma: 0.39 },
+  'Healthy woman (65 y)': { sex: 1, age: 65, height: 160, weight: 61, diam: 2.90, cAo: 10.3, sv: 55, cMus: 10.0, radius: 97.5,  gamma: 0.36 },
+  'Healthy woman (80 y)': { sex: 1, age: 80, height: 157, weight: 58, diam: 2.95, cAo: 10.9, sv: 52, cMus: 10.7, radius: 95,    gamma: 0.32 }
 };
-/** Reference targets the study profiles were fitted to (central SBP, mmHg; AIx, %). */
-export const STUDY_TARGETS: Record<string, { cSBP: number; aix: number }> = {
-  'Healthy man (25 y)':   { cSBP: 103, aix: 5.1 },
-  'Healthy man (45 y)':   { cSBP: 106, aix: 15.3 },
-  'Healthy man (65 y)':   { cSBP: 114, aix: 24.2 },
-  'Healthy man (80 y)':   { cSBP: 116, aix: 30.5 },
-  'Healthy woman (25 y)': { cSBP: 95,  aix: 12.7 },
-  'Healthy woman (45 y)': { cSBP: 102, aix: 24.0 },
-  'Healthy woman (65 y)': { cSBP: 114, aix: 31.5 },
-  'Healthy woman (80 y)': { cSBP: 118, aix: 34.8 }
+/** Reference values for the study profiles. v2.5 fits SVR to cuff SBP (Herbert 2014 central
+ *  SBP + amplification, i.e. their healthy cuff SBP) and Γ to AIx (Janner 2010); central SBP
+ *  (Herbert) and cuff DBP (NHANES normotensive, Wright 2011) are then predictions. */
+export const STUDY_TARGETS: Record<string, { cSBP: number; aix: number; cuffDBP?: number }> = {
+  'Healthy man (25 y)':   { cSBP: 103, aix: 5.1, cuffDBP: 68 },
+  'Healthy man (45 y)':   { cSBP: 106, aix: 15.3, cuffDBP: 74 },
+  'Healthy man (65 y)':   { cSBP: 114, aix: 24.2, cuffDBP: 67 },
+  'Healthy man (80 y)':   { cSBP: 116, aix: 30.5, cuffDBP: 67 },
+  'Healthy woman (25 y)': { cSBP: 95,  aix: 12.7, cuffDBP: 67 },
+  'Healthy woman (45 y)': { cSBP: 102, aix: 24.0, cuffDBP: 72 },
+  'Healthy woman (65 y)': { cSBP: 114, aix: 31.5, cuffDBP: 66 },
+  'Healthy woman (80 y)': { cSBP: 118, aix: 34.8, cuffDBP: 66 }
 };
 
 function studyPresets(): Record<string, Partial<Params>> {
@@ -443,5 +459,10 @@ export const CITATIONS = {
   Spronck2015: 'Spronck B, Heusinkveld MHG, Vanmolkot FH, et al. Pressure-dependence of arterial stiffness: potential clinical implications. J Hypertens 2015;33:330–338.',
   Butlin2017: 'Butlin M, Tan I, Shirbani F, Spronck B, Avolio A. Measurement of blood pressure dependency of carotid–femoral pulse wave velocity. Artery Res 2017;20:97–98 (abstract P145).',
   McNally2024: 'McNally RJ, Boguslavskyi A, Malek R, et al. Influence of blood pressure reduction on pulse wave velocity in primary hypertension: a meta-analysis and comparison with an acute modulation of transmural pressure. Hypertension 2024;81:1619–1627.',
+  Picone2017: 'Picone DS, Schultz MG, Otahal P, et al. Accuracy of cuff-measured blood pressure: systematic reviews and meta-analyses. J Am Coll Cardiol 2017;70:572–586.',
+  Wright2011: 'Wright JD, Hughes JP, Ostchega Y, Yoon SS, Nwankwo T. Mean systolic and diastolic blood pressure in adults aged 18 and over in the United States, 2001–2008. Natl Health Stat Report 2011;(35):1–22.',
+  Avolio1983: 'Avolio AP, Chen SG, Wang RP, et al. Effects of aging on changing arterial compliance and left ventricular load in a northern Chinese urban community. Circulation 1983;68:50–58.',
+  Murgo1980: 'Murgo JP, Westerhof N, Giolma JP, Altobelli SA. Aortic input impedance in normal man: relationship to pressure wave forms. Circulation 1980;62:105–116.',
+  Westerhof2009: 'Westerhof N, Lankhaar JW, Westerhof BE. The arterial Windkessel. Med Biol Eng Comput 2009;47:131–141.',
   Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.'
 } as const;

@@ -7,7 +7,7 @@
    AIx); every other row below is a prediction compared with data the
    model was not fitted to.
    ===================================================================== */
-import { DEFAULTS, MODEL, PRESETS, RESPONSE, STUDY_PROFILES, STUDY_TARGETS, baroFraction, weisslerMs, type Params } from '../config/physiology';
+import { DEFAULTS, LAWS, MODEL, PRESETS, RESPONSE, STUDY_PROFILES, STUDY_TARGETS, baroFraction, weisslerMs, type Params } from '../config/physiology';
 import { aortaDiameter, bsaDuBois, pwvNormal } from './calibrate';
 import { diastolicDecay } from './indices';
 import { buildCycle } from './cycle';
@@ -80,21 +80,29 @@ export function runStudyValidation(): StudyReport {
     const r = simulate(p), m = r.m, tgt = STUDY_TARGETS[name];
     const bsa = bsaDuBois(sp.height, sp.weight);
     const d = aortaDiameter(sp.sex, sp.age, bsa), pwv = pwvNormal(sp.age);
-    const amp = m.bSBP - m.Ps, hz = herbertRow(sp.sex, sp.age);
+    const hz = herbertRow(sp.sex, sp.age), amp = m.bSBP - m.devCSBP, cuffRef = tgt.cSBP + hz.amp[0];
     const aixRef = jannerAIx(sp.sex, sp.age, p.hr, sp.height);
     const tauLo = TAU_REF.mean - 2 * TAU_REF.sd, tauHi = TAU_REF.mean + 2 * TAU_REF.sd;
     const checks: StudyCheck[] = [
-      { what: 'Central SBP', model: `${m.Ps.toFixed(0)} mmHg`, reference: `${tgt.cSBP} mmHg (mean; 10th–90th ${hz.cSBP[1]}–${hz.cSBP[2]})`, source: 'Herbert 2014', fitted: true,
-        verdict: Math.abs(m.Ps - tgt.cSBP) <= 2 ? 'pass' : Math.abs(m.Ps - tgt.cSBP) <= 4 ? 'near' : 'fail' },
+      { what: 'Cuff SBP', model: `${m.bSBP.toFixed(0)} mmHg`, reference: `${cuffRef} mmHg (Herbert central SBP ${tgt.cSBP} + amplification ${hz.amp[0]})`, source: 'Herbert 2014', fitted: true,
+        verdict: Math.abs(m.bSBP - cuffRef) <= 2 ? 'pass' : Math.abs(m.bSBP - cuffRef) <= 4 ? 'near' : 'fail' },
       { what: 'AIx', model: `${m.AIx.toFixed(0)} %`, reference: `${aixRef.toFixed(0)} %`, source: 'Janner 2010', fitted: true,
         verdict: Math.abs(m.AIx - aixRef) <= 2 ? 'pass' : Math.abs(m.AIx - aixRef) <= 5 ? 'near' : 'fail' },
+      { kind: 'data', what: 'Central SBP as a cuff-calibrated device reports it', model: `${m.devCSBP.toFixed(0)} mmHg (true aortic ${m.Ps.toFixed(0)})`, reference: `${tgt.cSBP} mmHg (mean; 10th–90th ${hz.cSBP[1]}–${hz.cSBP[2]})`, source: 'Herbert 2014',
+        verdict: Math.abs(m.devCSBP - tgt.cSBP) <= 4 ? 'pass' : Math.abs(m.devCSBP - tgt.cSBP) <= 8 ? 'near' : 'fail' },
+      { kind: 'data', what: 'Cuff DBP', model: `${m.bDBP.toFixed(0)} mmHg`, reference: `${tgt.cuffDBP} mmHg (normotensive mean, ${sp.age < 40 ? '18–39' : sp.age < 60 ? '40–59' : '≥ 60'} y)`, source: 'Wright 2011 (NHANES)',
+        verdict: Math.abs(m.bDBP - tgt.cuffDBP!) <= 4 ? 'pass' : Math.abs(m.bDBP - tgt.cuffDBP!) <= 8 ? 'near' : 'fail' },
       { kind: 'consistency', what: 'Ascending-aorta diameter', model: `${p.diam.toFixed(2)} cm`, reference: `${d.lo.toFixed(2)}–${d.hi.toFixed(2)} cm`, source: 'Campens 2014',
         verdict: band(p.diam, d.lo, d.hi, 0.1) },
       { what: 'Aortic PWV at the operating MAP', model: `${m.cAoOp.toFixed(1)} m/s`, reference: `${pwv.lo.toFixed(1)}–${pwv.hi.toFixed(1)} m/s`, source: 'RVASC 2010',
         verdict: band(m.cAoOp, pwv.lo, pwv.hi, 0.5) },
-      { what: 'Amplification (cuff − central SBP)', model: `${amp.toFixed(0)} mmHg`, reference: `${hz.amp[1]}–${hz.amp[2]} mmHg (10th–90th; mean ${hz.amp[0]})`, source: 'Herbert 2014',
+      { kind: 'data', what: 'Amplification (cuff − device central SBP)', model: `${amp.toFixed(0)} mmHg`, reference: `${hz.amp[1]}–${hz.amp[2]} mmHg (10th–90th; mean ${hz.amp[0]})`, source: 'Herbert 2014',
         verdict: band(amp, hz.amp[1], hz.amp[2], 3) },
-      { what: 'Cuff BP in the normal range', model: `${m.bSBP.toFixed(0)}/${m.bDBP.toFixed(0)} mmHg`, reference: '< 130 / 60–80 mmHg', source: 'ACC/AHA 2017',
+      ...(sp.age >= 45 ? [{ kind: 'data' as CheckKind, what: 'Intra-arterial brachial − aortic SBP', model: `${(m.iaSBP - m.Ps).toFixed(0)} mmHg`, reference: '8.0 (95 % CI 5.9–10.1) mmHg, invasive, middle-aged to older', source: 'Picone 2017',
+        verdict: (within(m.iaSBP - m.Ps, 5.9, 10.1) ? 'pass' : within(m.iaSBP - m.Ps, 3.9, 12.1) ? 'near' : 'fail') as Verdict },
+      { kind: 'data' as CheckKind, what: 'Cuff SBP − aortic SBP', model: `${(m.bSBP - m.Ps).toFixed(0)} mmHg`, reference: '0.3 (95 % CI −1.5 to 2.1); mean absolute difference 8.0 mmHg', source: 'Picone 2017',
+        verdict: (Math.abs(m.bSBP - m.Ps - 0.3) <= 4 ? 'pass' : Math.abs(m.bSBP - m.Ps - 0.3) <= 8 ? 'near' : 'fail') as Verdict }] : []),
+      { kind: 'typical', what: 'Cuff BP in the normal range', model: `${m.bSBP.toFixed(0)}/${m.bDBP.toFixed(0)} mmHg`, reference: '< 130 / 60–80 mmHg', source: 'ACC/AHA 2017',
         verdict: m.bSBP < 130 && within(m.bDBP, 60, 80) ? 'pass' : m.bSBP < 140 && within(m.bDBP, 55, 85) ? 'near' : 'fail' },
       { what: 'Diastolic decay τ (asymptote 0)', model: `${m.tauFit.toFixed(2)} s`, reference: `${tauLo.toFixed(2)}–${tauHi.toFixed(2)} s (mean ± 2 SD)`, source: 'Chemla 2017',
         verdict: band(m.tauFit, tauLo, tauHi, 0.4) },
@@ -107,7 +115,7 @@ export function runStudyValidation(): StudyReport {
       { kind: 'consistency', what: 'Ejection time', model: `${m.et.toFixed(0)} ms`, reference: '300 ms start (Weissler ≈ 294 ms men, 306 ms women at 70 bpm)', source: 'Weissler 1968',
         verdict: Math.abs(m.et - 300) <= 1 ? 'pass' : 'fail' }
     ];
-    const out = { bSBP: m.bSBP, bDBP: m.bDBP, map: m.map, Ps: m.Ps, Pd: m.Pd, PP: m.PP, bPP: m.bPP, AIx: m.AIx, AIx75: m.AIx75, ppa: m.ppa,
+    const out = { bSBP: m.bSBP, bDBP: m.bDBP, iaSBP: m.iaSBP, iaDBP: m.iaDBP, devCSBP: m.devCSBP, map: m.map, Ps: m.Ps, Pd: m.Pd, PP: m.PP, bPP: m.bPP, AIx: m.AIx, AIx75: m.AIx75, ppa: m.ppa,
       amp, pwv: m.cAoOp, dtp: m.dtp, et: m.et, co: m.co, ci: m.co / bsa, svr: m.svrDyn, ctot: m.ctot, svpp: m.svpp, rc: m.tau,
       tauFit: m.tauFit, tauFree: m.tauFree, pInf: m.pInf, decayRate: m.decayRate, sevr: m.sevr, Ew: m.Ew };
     return { name, checks, out, inputs: p, bsa };
@@ -140,18 +148,25 @@ export function runStudyValidation(): StudyReport {
   const n = 1024, dt = 0.001, tauTrue = 1.5;
   const synth = Array.from({ length: n }, (_, k) => 100 * Math.exp(-k * dt / tauTrue));
   const fit = diastolicDecay(synth, dt, 300);
-  const base = simulate({}).m, stiff = simulate({ cAo: 11 }).m, constr = simulate({ radius: 90 }).m, fast = simulate({ hr: 100, sv: co / 100 }).m;
+  // v2.5: the arterioles drain toward Pzf, so the Windkessel time constant is the resistance
+  // above Pzf times compliance, τ′ = (SVR − Pzf/CO)·C (Chemla 2017), and the decay heads to P∞ ≈ Pzf.
+  const tauEff = (r: ReturnType<typeof simulate>) => r.d.svr * (1 - (LAWS.gen === 'v2.5' ? MODEL.pzfFrac : 0)) * r.d.cTot;
+  const synth2 = Array.from({ length: n }, (_, k) => 60 + 40 * Math.exp(-k * dt / 0.4));
+  const fit2 = diastolicDecay(synth2, dt, 300);
+  const rb = simulate({}), rs = simulate({ cAo: 11 }), rc = simulate({ radius: 90 }), rf = simulate({ hr: 100, sv: co / 100 });
+  const base = rb.m, stiff = rs.m, constr = rc.m, fast = rf.m;
   const decay: StudyCheck[] = [
     { kind: 'consistency', what: 'Recovers τ from a pure exponential', model: `${fit.tau.toFixed(4)} s`, reference: `${tauTrue} s`, source: 'numerical', verdict: Math.abs(fit.tau - tauTrue) < 1e-6 ? 'pass' : 'fail' },
-    { kind: 'consistency', what: 'Fitted τ tracks the Windkessel RC (default adult)', model: `${base.tauFit.toFixed(2)} s`, reference: `RC = ${base.tau.toFixed(2)} s`, source: 'Liu 1986',
-      verdict: Math.abs(base.tauFit / base.tau - 1) <= 0.15 ? 'pass' : Math.abs(base.tauFit / base.tau - 1) <= 0.3 ? 'near' : 'fail' },
-    { kind: 'consistency', what: 'Stiffer aorta: faster decay (τ ↓, rate ↑)', model: `τ ${base.tauFit.toFixed(2)} → ${stiff.tauFit.toFixed(2)} s`, reference: 'τ = R·C falls as C falls', source: 'Chemla 2017; McDonald',
-      verdict: stiff.tauFit < base.tauFit && stiff.decayRate > base.decayRate ? 'pass' : 'fail' },
-    { kind: 'consistency', what: 'Arteriolar constriction: fitted τ moves with RC (R ↑, but C ↓ as pressure rises)', model: `τ ${base.tauFit.toFixed(2)} → ${constr.tauFit.toFixed(2)} s`,
-      reference: `RC ${base.tau.toFixed(2)} → ${constr.tau.toFixed(2)} s`, source: 'McDonald; N&E 2001',
-      verdict: Math.sign(constr.tauFit - base.tauFit) === Math.sign(constr.tau - base.tau) ? 'pass' : Math.abs(constr.tauFit / base.tauFit - 1) < 0.05 ? 'near' : 'fail' },
-    { kind: 'consistency', what: 'Higher HR at the same output: τ about the same', model: `τ ${base.tauFit.toFixed(2)} → ${fast.tauFit.toFixed(2)} s`, reference: 'R and C unchanged', source: 'two-element Windkessel',
-      verdict: Math.abs(fast.tauFit / base.tauFit - 1) <= 0.15 ? 'pass' : Math.abs(fast.tauFit / base.tauFit - 1) <= 0.3 ? 'near' : 'fail' }
+    { kind: 'consistency', what: 'Recovers τ and P∞ from 60 + 40·e^(−t/0.4 s)', model: `τ ${fit2.tauFree.toFixed(3)} s, P∞ ${fit2.pInf.toFixed(1)} mmHg`, reference: '0.4 s, 60 mmHg', source: 'numerical',
+      verdict: Math.abs(fit2.tauFree - 0.4) < 0.01 && Math.abs(fit2.pInf - 60) < 0.5 ? 'pass' : 'fail' },
+    { kind: 'consistency', what: 'Decay heads toward the zero-flow pressure (default adult)', model: `P∞ ${base.pInf.toFixed(0)} mmHg`, reference: `Pzf ${(MODEL.pzfFrac * base.map).toFixed(0)} mmHg (${MODEL.pzfFrac} × MAP)`, source: 'Chemla 2017',
+      verdict: Math.abs(base.pInf - MODEL.pzfFrac * base.map) <= 6 ? 'pass' : Math.abs(base.pInf - MODEL.pzfFrac * base.map) <= 12 ? 'near' : 'fail' },
+    { kind: 'consistency', what: 'Stiffer aorta: faster decay (τ′ and fitted τ fall)', model: `τ′ ${tauEff(rb).toFixed(2)} → ${tauEff(rs).toFixed(2)} s; fitted ${base.tauFree.toFixed(2)} → ${stiff.tauFree.toFixed(2)} s`, reference: 'τ′ falls as C falls', source: 'Chemla 2017; McDonald',
+      verdict: tauEff(rs) < tauEff(rb) && stiff.tauFree < base.tauFree ? 'pass' : 'fail' },
+    { kind: 'consistency', what: 'Arteriolar constriction: fitted τ moves with τ′', model: `fitted ${base.tauFree.toFixed(2)} → ${constr.tauFree.toFixed(2)} s`, reference: `τ′ ${tauEff(rb).toFixed(2)} → ${tauEff(rc).toFixed(2)} s`, source: 'McDonald; N&E 2001',
+      verdict: Math.sign(constr.tauFree - base.tauFree) === Math.sign(tauEff(rc) - tauEff(rb)) ? 'pass' : Math.abs(constr.tauFree / base.tauFree - 1) < 0.05 ? 'near' : 'fail' },
+    { kind: 'consistency', what: 'Higher HR at the same output: fitted τ about the same', model: `${base.tauFree.toFixed(2)} → ${fast.tauFree.toFixed(2)} s`, reference: 'R and C unchanged', source: 'Windkessel',
+      verdict: Math.abs(fast.tauFree / base.tauFree - 1) <= 0.15 ? 'pass' : Math.abs(fast.tauFree / base.tauFree - 1) <= 0.3 ? 'near' : 'fail' }
   ];
 
   /* cardiac-cycle diagram: schematic parts must stay consistent with the modelled beat */
@@ -233,10 +248,10 @@ export function runStudyValidation(): StudyReport {
       verdict: Math.abs(pct(exRest.e.params.sv, exSub.e.params.sv) - pct(RS.exSv.rest, RS.exSv.sub)) < 1 ? 'pass' : 'fail' },
     { kind: 'fitted', what: `Exercise +${xLow} / +${xMod} bpm: MAP`, model: `+${pct(exRest.m.map, exLow.m.map).toFixed(1)} / +${pct(exRest.m.map, exMod.m.map).toFixed(1)} %`, reference: `+${pct(RS.exMap.rest, RS.exMap.low).toFixed(1)} / +${pct(RS.exMap.rest, RS.exMap.mod).toFixed(1)} %`, source: 'Wheatley',
       verdict: Math.abs(pct(exRest.m.map, exLow.m.map) - pct(RS.exMap.rest, RS.exMap.low)) < 2 && Math.abs(pct(exRest.m.map, exMod.m.map) - pct(RS.exMap.rest, RS.exMap.mod)) < 2 ? 'pass' : 'near' },
-    { kind: 'data', what: `Exercise +${xLow} bpm: rise in cuff SBP`, model: `+${(exLow.m.bSBP - exRest.m.bSBP).toFixed(0)} mmHg`, reference: `+${(wh.sbp[1] - wh.sbp[0]).toFixed(0)} mmHg (intra-arterial)`, source: 'Wheatley',
-      verdict: Math.abs(exLow.m.bSBP - exRest.m.bSBP - (wh.sbp[1] - wh.sbp[0])) <= 10 ? 'pass' : Math.abs(exLow.m.bSBP - exRest.m.bSBP - (wh.sbp[1] - wh.sbp[0])) <= 20 ? 'near' : 'fail' },
-    { kind: 'data', what: `Exercise +${xLow} / +${xMod} bpm: change in cuff DBP`, model: `${(exLow.m.bDBP - exRest.m.bDBP).toFixed(0)} / ${(exMod.m.bDBP - exRest.m.bDBP).toFixed(0)} mmHg`, reference: `${(wh.dbp[1] - wh.dbp[0]).toFixed(0)} / +${(wh.dbp[2] - wh.dbp[0]).toFixed(0)} mmHg (about unchanged)`, source: 'Wheatley',
-      verdict: Math.abs(exLow.m.bDBP - exRest.m.bDBP) <= 6 && Math.abs(exMod.m.bDBP - exRest.m.bDBP) <= 6 ? 'pass' : Math.abs(exMod.m.bDBP - exRest.m.bDBP) <= 12 ? 'near' : 'fail' },
+    { kind: 'data', what: `Exercise +${xLow} bpm: rise in brachial SBP`, model: `+${(exLow.m.iaSBP - exRest.m.iaSBP).toFixed(0)} mmHg (intra-arterial)`, reference: `+${(wh.sbp[1] - wh.sbp[0]).toFixed(0)} mmHg (intra-arterial)`, source: 'Wheatley',
+      verdict: Math.abs(exLow.m.iaSBP - exRest.m.iaSBP - (wh.sbp[1] - wh.sbp[0])) <= 10 ? 'pass' : Math.abs(exLow.m.iaSBP - exRest.m.iaSBP - (wh.sbp[1] - wh.sbp[0])) <= 20 ? 'near' : 'fail' },
+    { kind: 'data', what: `Exercise +${xLow} / +${xMod} bpm: change in brachial DBP`, model: `${(exLow.m.iaDBP - exRest.m.iaDBP).toFixed(0)} / ${(exMod.m.iaDBP - exRest.m.iaDBP).toFixed(0)} mmHg (intra-arterial)`, reference: `${(wh.dbp[1] - wh.dbp[0]).toFixed(0)} / +${(wh.dbp[2] - wh.dbp[0]).toFixed(0)} mmHg (about unchanged)`, source: 'Wheatley',
+      verdict: Math.abs(exLow.m.iaDBP - exRest.m.iaDBP) <= 6 && Math.abs(exMod.m.iaDBP - exRest.m.iaDBP) <= 6 ? 'pass' : Math.abs(exMod.m.iaDBP - exRest.m.iaDBP) <= 12 ? 'near' : 'fail' },
     { kind: 'data', what: `Exercise +${xLow} / +${xMod} bpm: SVR relative to rest`, model: `× ${svrRel(exLow.m).toFixed(2)} / × ${svrRel(exMod.m).toFixed(2)}`, reference: `× ${(wh.svri[1] / wh.svri[0]).toFixed(2)} / × ${(wh.svri[2] / wh.svri[0]).toFixed(2)}`, source: 'Wheatley',
       verdict: Math.abs(svrRel(exLow.m) - wh.svri[1] / wh.svri[0]) <= 0.1 && Math.abs(svrRel(exMod.m) - wh.svri[2] / wh.svri[0]) <= 0.1 ? 'pass' : 'near' },
     { kind: 'fitted', what: 'Physiologic, 45-y man: share of phenylephrine pressor effect buffered', model: `${(100 * buffered(indPhe.m.map, physPhe.m.map, rest.m.map)).toFixed(0)} %`, reference: `${(100 * fYoung).toFixed(0)} % (BRB interpolated 25–65 y)`, source: 'Jones 2003; Christou 2003',
@@ -255,7 +270,7 @@ export function runStudyValidation(): StudyReport {
   const sYoung = pwvSlope(PRESETS['Healthy man (25 y)']), sOld = pwvSlope(PRESETS['Healthy man (80 y)']);
   const etAge = (sex: number) => [25, 80].map(age => simulate({ ...DEFAULTS, ...PRESETS[sex ? 'Healthy woman (25 y)' : 'Healthy man (25 y)'], age, hr: 70 }).m.et);
   const etM = etAge(0), etF = etAge(1);
-  const ratios = profiles.map(p => p.out.tauFit / p.out.rc);
+  const ratios = Object.keys(STUDY_PROFILES).map(nm => { const r = simulate({ ...DEFAULTS, ...PRESETS[nm] }); return r.m.tauFree / tauEff(r); });
   const rLo = Math.min(...ratios), rHi = Math.max(...ratios);
   const laws: StudyCheck[] = [
     { kind: 'data', what: 'PWV change per 10 mmHg MAP, default adult (45 y)', model: `${sDef.slope.toFixed(2)} m/s (PWV ${sDef.pwv.toFixed(1)} m/s)`, reference: '0.6 ± 0.3 m/s (n = 88, 19–91 y)', source: 'Butlin 2017',
@@ -266,7 +281,7 @@ export function runStudyValidation(): StudyReport {
       verdict: sOld.slope > sYoung.slope ? 'pass' : 'fail' },
     { kind: 'data', what: 'Ejection time at 70 bpm does not change with age (25 vs 80 y)', model: `men ${etM[0].toFixed(0)} / ${etM[1].toFixed(0)} ms; women ${etF[0].toFixed(0)} / ${etF[1].toFixed(0)} ms`, reference: 'LVET did not change with age in either sex (n = 1969 healthy)', source: 'Alhakak 2023',
       verdict: Math.abs(etM[0] - etM[1]) < 1 && Math.abs(etF[0] - etF[1]) < 1 ? 'pass' : 'fail' },
-    { kind: 'consistency', what: 'Known limitation: waveform-fitted τ vs τ = R·C, eight study profiles', model: `fitted / R·C = ${rLo.toFixed(2)}–${rHi.toFixed(2)}`, reference: '1.00 for a pure Windkessel', source: 'Liu 1986',
+    { kind: 'consistency', what: 'Known limitation: waveform-fitted τ (asymptote free) vs τ′ = (SVR − Pzf/CO)·C, eight study profiles', model: `fitted / τ′ = ${rLo.toFixed(2)}–${rHi.toFixed(2)}`, reference: '1.00 for a pure Windkessel', source: 'Chemla 2017',
       verdict: rHi <= 1.15 && rLo >= 0.85 ? 'pass' : rHi <= 1.3 && rLo >= 0.7 ? 'near' : 'fail' }
   ];
 

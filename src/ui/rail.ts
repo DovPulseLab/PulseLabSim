@@ -193,7 +193,7 @@ export function renderRailBeat(ctx: Ctx): void {
     sv: `cardiac output ${m.co.toFixed(2)} L/min · reference for age/sex/size ${cal.sv.toFixed(0)} mL${beat.effect.svRise > 0.05 ? ` · +${beat.effect.svRise.toFixed(1)} mL from slower HR` : ''}`,
     etScale: `${etNote} · setting ${act.etScale.toFixed(2)} × Weissler`,
     radius: `SVR ${m.svrDyn.toFixed(0)} dyn·s·cm⁻⁵`, cAo: `operating ${m.cAoOp.toFixed(1)} m/s at MAP ${m.map.toFixed(0)} · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cAo.toFixed(1)} (${range2(cal.pwvRange, 1)}) m/s`,
-    diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg · predicted ${cal.diam.toFixed(2)} (${range2(cal.diamRange, 2)}) cm`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s`,
+    diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg · predicted ${cal.diam.toFixed(2)} (${range2(cal.diamRange, 2)}) cm`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cMus.toFixed(1)} m/s (Avolio 1983 slope)`,
     gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`,
     sex: `ejection line ${act.sex === 1 ? '418 − 1.6·HR' : '413 − 1.7·HR'} ms`, age: 'sets the calibration only',
     resp: respNote(beat.effect.response, p.inputs),

@@ -16,7 +16,7 @@ function studyDataHtml(): string {
     const svr = p.svrRef / Math.pow(p.radius / 100, 4) * PHYS.DYN;
     return [name, sp.height, sp.weight, bsaDuBois(sp.height, sp.weight).toFixed(2), sp.diam.toFixed(2), sp.cAo.toFixed(1), sp.sv,
       `${sp.radius} % (${svr.toFixed(0)})`, sp.gamma.toFixed(2), (p.etScale * weisslerMs(p.hr, sp.sex)).toFixed(0), p.hr,
-      STUDY_TARGETS[name].cSBP, STUDY_TARGETS[name].aix.toFixed(1)];
+      STUDY_TARGETS[name].cSBP, STUDY_TARGETS[name].aix.toFixed(1), STUDY_TARGETS[name].cuffDBP ?? '—', sp.cMus.toFixed(1)];
   });
   return `
 <h4>A · Ascending-aorta diameter equations (Campens 2014, Table 2, Du Bois BSA)</h4>
@@ -43,7 +43,7 @@ ${table(['Fit', 'τ (s)', 'P∞ (mmHg)', 'Source'], [
     ['Asymptote fixed at 0 mmHg', `${TAU_REF.mean} ± ${TAU_REF.sd}`, '0 (assumed)', 'Chemla 2017, n = 16'],
     ['Asymptote fitted', `${TAU_FREE_REF.mean} ± ${TAU_FREE_REF.sd}`, `${TAU_FREE_REF.pInf} ± ${TAU_FREE_REF.pInfSd}`, 'Yamakado 2018, n = 71 normal subjects, 20–80 y']])}
 <h4>G · Study-profile inputs</h4>
-${table(['Profile', 'Height (cm)', 'Weight (kg)', 'BSA (m²)', 'Aorta (cm)', 'Aortic PWV (m/s)', 'SV (mL)', 'Arteriolar radius (SVR, dyn·s·cm⁻⁵)', 'Γ', 'LVET (ms)', 'HR', 'Target cSBP', 'Target AIx (%)'], profiles)}
+${table(['Profile', 'Height (cm)', 'Weight (kg)', 'BSA (m²)', 'Aorta (cm)', 'Aortic PWV (m/s)', 'SV (mL)', 'Arteriolar radius (SVR, dyn·s·cm⁻⁵)', 'Γ', 'LVET (ms)', 'HR', 'Herbert central SBP', 'Target AIx (%)', 'NHANES cuff DBP', 'Arm PWV (m/s)'], profiles)}
 <p class="fine">Aorta, PWV and SV are calibrated (tables A–C). Arteriolar radius and Γ are fitted to the last two columns (tables D–E). Other inputs keep their defaults: muscular-artery PWV ${DEFAULTS.cMus} m/s, reflection-site position 1.00, LVEDP ${DEFAULTS.lvedp} mmHg.</p>`;
 }
 
@@ -132,13 +132,14 @@ export function methodsHtml(): string {
 </ul>
 
 <h3>9 · Patient calibration and healthy study profiles (v2.1)</h3>
-<p>Changing <b>sex, age, height or weight</b> recalculates three inputs from healthy reference data. The other inputs keep their values, and any slider can still be moved by hand afterwards.</p>
+<p>Changing <b>sex, age, height or weight</b> recalculates four inputs from healthy reference data. The other inputs keep their values, and any slider can still be moved by hand afterwards.</p>
 <div class="eq">BSA = 0.007184 × weight<sup>0.425</sup> × height<sup>0.725</sup><span class="src">Du Bois 1916</span></div>
 <div class="eq">log₁₀ D<sub>AA</sub>(mm) = a + b·log₁₀(age) + c·BSA &nbsp; men a 1.033, b 0.188, c 0.070; women 1.001, 0.177, 0.086<span class="src">Campens 2014, Table 2 (leading edge, end-diastole)</span></div>
 <div class="eq">aortic PWV = mean carotid–femoral PWV of the age decade, interpolated: 6.2 · 6.5 · 7.2 · 8.3 · 10.3 · 10.9 m/s (&lt;30 … ≥70 y)<span class="src">RVASC 2010, Table 4 normal values</span></div>
 <div class="eq">SV = SV/BSA (by sex and age decile) × 0.70 × BSA<span class="src">Maceira 2006, Tables 2–3</span></div>
+<div class="eq">muscular (arm) PWV = 9.0 + 0.048 × (age − 45) m/s<span class="src">slope: Avolio 1983 (upper limb, 4.8·age + 998 cm/s); anchored at v1's 9.0 m/s at 45 y (v2.5)</span></div>
 <p>The 0.70 factor brings CMR stroke volume (which runs higher than Doppler or thermodilution stroke volume) to the model's flow level: v1's default 45-year-old man ejects 72 mL with BSA 1.90 m², 0.70 × Maceira's 54 mL/m². The age and sex differences come from the source unchanged. No sex term is used for PWV because the collaboration found the adjusted difference under 0.1 m/s. Age and weight act only through this calibration; sex also selects the women's Weissler line.</p>
-<p>The eight <b>healthy study profiles</b> (men and women at 25, 45, 65 and 80 y; heart rate 70 bpm; ejection 300 ms; typical healthy-weight height and weight) are calibrated as above, and then two inputs are fitted per profile: arteriolar radius (SVR) so that central SBP equals the mean of Herbert et al. 2014's normal population for that sex and decade, and reflection coefficient Γ so that AIx equals Janner et al. 2010's reference equation for that sex, age, heart rate and height. Everything else is a prediction, compared with reference data on the Validation tab.</p>
+<p>The eight <b>healthy study profiles</b> (men and women at 25, 45, 65 and 80 y; heart rate 70 bpm; ejection 300 ms; typical healthy-weight height and weight) are calibrated as above, and then two inputs are fitted per profile: arteriolar radius (SVR) so that cuff SBP equals Herbert et al. 2014's healthy cuff SBP for that sex and decade (their central SBP + amplification), and reflection coefficient Γ so that AIx equals Janner et al. 2010's reference equation for that sex, age, heart rate and height. Everything else is a prediction compared with reference data on the Validation tab, including central SBP as a device would report it (Herbert) and cuff DBP (NHANES normotensive means, Wright 2011). v2.1–2.4 fitted SVR to Herbert's central SBP directly, which compared a device estimate with the model's true aortic pressure (§15).</p>
 
 <h4 style="margin-top:1.2em">Reference data</h4>
 ${studyDataHtml()}
@@ -186,17 +187,28 @@ ${studyDataHtml()}
 <p>An outside review raised six points. Each was tested against the model and published data:</p>
 <div class="table-wrap"><table class="vt"><tr><th>Point</th><th>Finding</th><th>Change</th></tr>
 <tr><td>At fixed SV and SVR, τ falls steeply with HR</td><td>Mostly real physiology: MAP rises with HR (flow source), and PWV rises with MAP, so compliance and R·C fall. The model's slope, 0.45 m/s per 10 mmHg MAP at PWV 7.5 m/s and 0.53 at 9.9 m/s, lies inside the measured 0.6 ± 0.3 (Butlin 2017) and 0.65, 95 % CI 0.46–0.83 (McNally 2024).</td><td>None to the law; data rows added (Validation §9).</td></tr>
-<tr><td>Fitted τ is not the Windkessel R·C</td><td>Confirmed. The fitted τ runs 1.2–2.6 × R·C across the study profiles. Γ scales the reflection at every frequency, including near 0 Hz, where the arterial tree acts as one Windkessel; with Γ below 0.5 this weakens the low-frequency load, late diastole flattens, and the zero-asymptote fit lengthens. The same cause makes late-systolic pressure sag at high HR with a small SV, so young profiles reach AIx −50 to −60 % with cardiac output held at 140–180 bpm (people rarely go below ≈ −30 %).</td><td>The τ card now shows τ = R·C; the fitted τ is labelled as a waveform measurement. A frequency-dependent reflection (full Windkessel near 0 Hz) fixed τ (fitted ≈ R·C within 5 %) but, with the present compliance and arm model, lowered cuff DBP to ≈ 55–57 mmHg at 65–80 y; it needs a joint recalibration and is not used yet.</td></tr>
+<tr><td>Fitted τ is not the Windkessel R·C</td><td>Confirmed. The fitted τ runs 1.2–2.6 × R·C across the study profiles. Γ scales the reflection at every frequency, including near 0 Hz, where the arterial tree acts as one Windkessel; with Γ below 0.5 this weakens the low-frequency load, late diastole flattens, and the zero-asymptote fit lengthens.</td><td>v2.4: the τ card shows τ = R·C. v2.5: fixed at the source with a joint recalibration (§15).</td></tr>
 <tr><td>AIx flat from 60 to 100 bpm at fixed SV</td><td>Expected: shorter ejection lowers AIx, but the higher MAP stiffens the aorta and returns the echo earlier. In Pacing mode AIx falls 3.6 % per 10 bpm from 60 to 110 bpm, against ≈ 4 % measured (Wilkinson 2000; Validation §8).</td><td>None.</td></tr>
 <tr><td>P1/P2 are not found from the inflection point</td><td>True. The model uses the true arrival time of its reflected wave, which is what a device estimates from the inflection. A device-style inflection (d²P/dt²) was tested: it agreed within a few % at rest but jumped between beats at high HR, as device readings do.</td><td>None; the plot still marks the waveform inflection.</td></tr>
 <tr><td>Forward and backward waves share the mean pressure equally</td><td>True; a display convention, because one pressure trace cannot be split without flow.</td><td>Curves labelled "model component".</td></tr>
 <tr><td>Ejection time has no age term</td><td>Supported by data: in 1969 healthy adults LVET did not change with age in either sex (Alhakak 2023).</td><td>None; data row added.</td></tr>
 </table></div>
 
-<h3>15 · Assumptions &amp; limitations</h3>
+<h3>15 · Recalibration (v2.5)</h3>
+<p>The v2.4 review found one root cause behind two problems: Γ scaled the reflection at every frequency, including near 0 Hz, where the arterial tree acts as one Windkessel. Fixing it alone lowered diastolic pressure in older profiles, which traced to a second issue: the model's "cuff" was really intra-arterial pressure, compared with cuff-based norms. v2.5 changes four things together:</p>
+<div class="table-wrap"><table class="vt"><tr><th>Change</th><th>Rule</th><th>Data</th></tr>
+<tr><td>Reflection</td><td>scale on G(ω) = Γ/0.5 + (1 − Γ/0.5) / (1 + (f / ${MODEL.reflFc} Hz)²): full Windkessel near 0 Hz, Γ at the higher harmonics</td><td>Input impedance falls from SVR toward Zc over the first few harmonics (Murgo 1980; Westerhof 2009). The crossover is a model constant; 1.5–3 Hz changes cuff DBP by &lt; 1 mmHg RMS.</td></tr>
+<tr><td>Zero-flow pressure</td><td>the arterioles drain toward Pzf = ${MODEL.pzfFrac} × MAP; pulsatile load R′ = SVR − Pzf/CO; MAP = CO × SVR still holds</td><td>Invasive diastolic decay heads to P∞ ≈ 58.5 ± 8.1 mmHg (Yamakado 2018, n = 71) or 71 ± 12 (Chemla 2017); effective resistance ≈ 70 % below SVR (Chemla 2017). ${MODEL.pzfFrac} × MAP gives a study-profile mean P∞ of ≈ 58 mmHg.</td></tr>
+<tr><td>Cuff measurement</td><td>cuff SBP = intra-arterial brachial SBP − ${MODEL.cuff.sbp}; cuff DBP = intra-arterial DBP + ${MODEL.cuff.dbp} mmHg. Device central SBP = cuff DBP + (aortic PP) × cuff PP / true brachial PP</td><td>Invasive individual-participant meta-analysis, 74 studies, n = 3 073 (Picone 2017). Tonometry devices calibrate the pulse to cuff SBP/DBP, so their central SBP inherits the cuff error.</td></tr>
+<tr><td>Arm PWV by age</td><td>9.0 + 0.048 × (age − 45) m/s, set by the calibration</td><td>Upper-limb PWV rises 0.048 m/s per year (Avolio 1983).</td></tr>
+</table></div>
+<p>The study profiles were then refitted: SVR to Herbert's healthy cuff SBP and Γ to Janner's AIx. Cuff DBP, device central SBP, amplification, the invasive Picone relations, τ and P∞ are all predictions (Validation §5). The v1 teaching profiles and drug effects were not refitted; all v1 validation checks still pass. The v1 laws remain in the code only for the regression test.</p>
+<p><b>Where v2.5 still misses:</b> at 65 y the intra-arterial brachial − aortic SBP difference is 11–14 mmHg against 8.0 (5.9–10.1) measured, so cuff SBP sits 5–9 mmHg above aortic SBP where Picone found ≈ 0; the fitted free-asymptote τ is 0.43–0.54 × τ′ and 0.14–0.16 s at 65–80 y (Yamakado 0.44 ± 0.11 s); cuff DBP is 5 mmHg low at 65 y and 7 mmHg high in the 25-y man; with pacing, AIx falls 2.1–2.7 % per 10 bpm against ≈ 4 % measured; during exercise brachial DBP falls (−8 / −21 mmHg) where Wheatley's stayed level; and with cardiac output held at 140–180 bpm the 25-year-old profile reaches AIx −57 to −67 % (people rarely go below ≈ −30 %). v2.4 attributed that last miss to the reflection law, but the v2.5 reflection did not change it, so its cause lies elsewhere (most likely the fixed ejection-flow shape at very short ejection times).</p>
+
+<h3>16 · Assumptions &amp; limitations</h3>
 <ul>
-  <li>Study profiles: pulse-pressure amplification (cuff − central SBP) is about right at 25–45 y but high at 65–80 y (≈ 13–15 mmHg vs means of 6–8 and 90th percentiles of 12–17 mmHg; Herbert 2014), because the model uses one fixed upper-limb transfer function. At 65–80 y cuff DBP is ≈ 60–63 mmHg and cuff SBP ≈ 128–132 mmHg.</li>
-  <li>The waveform's fitted τ runs 1.2–2.6 × R·C (§14), and AIx at high HR with a small SV is more negative than in people. Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote). With the asymptote fitted, τ is 0.19–0.22 s at 65–80 y, just under the invasive range (0.23–0.65 s).</li>
+  <li>Study profiles: amplification and cuff values are now compared like-for-like (cuff with cuff, device with device); the remaining misses are listed in §15.</li>
+  <li>Diastolic decay: see §15 for the remaining misses. Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote). With the asymptote fitted, τ is 0.19–0.22 s at 65–80 y, just under the invasive range (0.23–0.65 s).</li>
   <li>Single effective reflection site; the real tree has distributed reflections. Absolute Δtp values in youth are shorter than some invasive reports — trends, not absolute numbers, are the point.</li>
   <li>The heart is a flow source: stroke volume does not change with afterload, and changes with filling time only through the illustrative rule above for acute drugs. Moving the HR slider by hand, or a long-term v1 drug that slows HR, lowers MAP in proportion.</li>
   <li>MAP = CO × SVR, so aortic stiffness changes pulse pressure and central systolic pressure but not MAP or its percentage fall with a vasodilator such as propofol. The model has no mechanism by which a stiff aorta worsens hypotension.</li>
@@ -205,6 +217,6 @@ ${studyDataHtml()}
   <li>Reflection magnitude depends heavily on the separation method; compare directions, not absolute values.</li>
 </ul>
 
-<h3>16 · References</h3>
+<h3>17 · References</h3>
 <ol>${Object.values(CITATIONS).map(c => `<li>${c}</li>`).join('')}</ol>`;
 }

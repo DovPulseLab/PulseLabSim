@@ -43,6 +43,6 @@ describe('physiologic response modes', () => {
   it('fitted and consistency rows pass; prediction results are pinned so changes are noticed', () => {
     const rows = runStudyValidation().response;
     for (const c of rows.filter(r => r.kind !== 'data')) expect(c.verdict, c.what).toBe('pass');
-    expect(rows.filter(r => r.kind === 'data').map(r => r.verdict)).toEqual(['pass', 'fail', 'pass', 'fail', 'near', 'fail', 'near']);
+    expect(rows.filter(r => r.kind === 'data').map(r => r.verdict)).toEqual(['pass', 'fail', 'pass', 'fail', 'pass', 'fail', 'near']);
   });
 });

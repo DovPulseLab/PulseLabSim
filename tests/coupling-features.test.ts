@@ -42,9 +42,10 @@ describe('feature points', () => {
     ['ISH (type A)', PRESETS['Isolated systolic HTN (80 y)'], 'A'],
     ['defaults (type A)', {}, 'A'],
     ['essential HTN (type A)', PRESETS['Essential HTN (55 y)'], 'A'],
-    ['low reflection Γ 0.2 (type B)', { gamma: 0.2 }, 'B'],
+    // v2.5: near 0 Hz the load is the full Windkessel, so even low Γ leaves some augmentation
+    ['low reflection Γ 0.1 (type B)', { gamma: 0.1 }, 'B'],
     ['young adult (type C)', PRESETS['Young adult (20 y)'], 'C'],
-    ['very low reflection Γ 0.1 (type C)', { gamma: 0.1 }, 'C']
+    ['young adult, low Γ 0.2 (type C)', { ...PRESETS['Young adult (20 y)'], gamma: 0.2 }, 'C']
   ];
   for (const [name, o, type] of cases) {
     it(name, () => {
