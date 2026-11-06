@@ -43,13 +43,13 @@ describe('physiologic response modes', () => {
   it('fitted and consistency rows pass; prediction results are pinned so changes are noticed', () => {
     const rows = runStudyValidation().response;
     for (const c of rows.filter(r => r.kind !== 'data')) expect(c.verdict, c.what).toBe('pass');
-    expect(rows.filter(r => r.kind === 'data').map(r => r.verdict)).toEqual(['pass', 'fail', 'pass', 'fail', 'pass', 'fail', 'near']);
+    expect(rows.filter(r => r.kind === 'data').map(r => r.verdict)).toEqual(['pass', 'pass', 'pass', 'fail', 'pass', 'fail', 'near']);
   });
 });
 
 describe('Wilkinson 2000 pacing benchmark', () => {
   it('verdicts are pinned so changes are noticed', () => {
     const w = runStudyValidation().wilkinson;
-    expect(w.map(c => c.verdict)).toEqual(['pass', 'pass', 'fail', 'fail', 'fail', 'fail', 'fail', 'near']);
+    expect(w.map(c => c.verdict)).toEqual(['pass', 'pass', 'fail', 'fail', 'near', 'fail', 'fail', 'near']);
   });
 });

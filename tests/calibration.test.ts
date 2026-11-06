@@ -139,7 +139,7 @@ describe('study-profile validation', () => {
   });
   it('known limitations stay as documented (no new failures)', () => {
     const fails = r.profiles.flatMap(p => p.checks.filter(c => c.verdict === 'fail').map(c => `${p.name}: ${c.what}`));
-    expect(fails).toEqual(['Healthy man (65 y): Intra-arterial brachial − aortic SBP', 'Healthy man (65 y): Cuff SBP − aortic SBP']);
+    expect(fails).toEqual(['Healthy woman (45 y): Intra-arterial brachial − aortic SBP', 'Healthy woman (80 y): Intra-arterial brachial − aortic SBP']);
   });
 });
 

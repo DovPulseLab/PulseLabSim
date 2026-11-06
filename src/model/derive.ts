@@ -72,9 +72,9 @@ export function derive(p: Params, couplingOpts: FixedPointOptions = {}): Derived
   // pulsatile load sees only the resistance above Pzf (Chemla 2017). DC is still MAP = CO × SVR.
   const pzf = LAWS.gen === 'v2.5' ? MODEL.pzfFrac * svr * qMean : 0;
   const rTerm = Math.max(MODEL.rTermMinFrac * svr, svr - zt - pzf / qMean);
-  const armLen = MODEL.armLenPerHeight * p.height;
+  const armLen = (LAWS.gen === 'v2.5' ? MODEL.armReflPerHeight : MODEL.armLenPerHeight) * p.height;
   const brachX = MODEL.brachFrac * armLen;
-  const gArm = MODEL.gArm;
+  const gArm = LAWS.gen === 'v2.5' ? MODEL.gArmV25 : MODEL.gArm;
   const ep = 2 * rhoc2;
   return { T, ET, svr, qMean, map, cAoOp, cMusOp, A, zc, lp, cPath, dtp, cTot, cTube, cTerm, g, kRefl, zt, rTerm, armLen, brachX, gArm, ep, coupling };
 }

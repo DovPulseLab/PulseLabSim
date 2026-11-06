@@ -82,7 +82,7 @@ export function renderValidation(): void {
       return `<td class="n"><span class="pass">${n('pass')}</span> / <span class="near">${n('near')}</span> / <span class="fail">${n('fail')}</span></td>`; }).join('')}</tr></table></div>
     <p class="fine">M = man, F = woman, number = age. Heart rate 70 bpm in every profile. Inputs and the reference tables are on the Methods tab (§9).</p>
     ${s5.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(p.checks)}</table></div>`).join('')}
-    <div class="note">Known limitations, also listed in Methods §15: at 65–80 y the arm amplifies the pulse more than invasive data show (intra-arterial brachial − aortic SBP 11–14 vs 8.0 mmHg), so cuff SBP sits 5–9 mmHg above aortic SBP; the fitted free-asymptote τ is short at 65–80 y (0.14–0.16 s); cuff DBP is ≈ 5 mmHg low at 65 y and 7 mmHg high in the 25-year-old man. Use these profiles for trends and comparisons between groups, and enter each subject's own height, weight, heart rate and measured values where you have them.</div>
+    <div class="note">Known limitations, also listed in Methods §15: the women's profiles at 45 and 80 y amplify the pulse less than invasive data show (intra-arterial brachial − aortic SBP 2–4 vs 8.0 mmHg, a mostly male cohort); the fitted free-asymptote τ is short at 65–80 y (0.14–0.15 s). Use these profiles for trends and comparisons between groups, and enter each subject's own height, weight, heart rate and measured values where you have them.</div>
   </div>
   <div class="card prose" style="max-width:none">
     <h2>6 · Heart rate to 180 bpm and diastolic decay (v2.1)</h2>
@@ -110,7 +110,7 @@ export function renderValidation(): void {
   <div class="card prose" style="max-width:none">
     <h2>10 · Pacing benchmark: Wilkinson 2000, Table 2</h2>
     <p>Changes from 60 to 100 bpm in 22 pacemaker patients (mean age 63), against the 65-year-old man in Pacing mode, measured as the study measured (cuff; cuff-calibrated device). Changes are compared rather than absolute values because the populations differ. ${dataScore(s5.wilkinson)}</p>
-    <p class="fine">Diastolic pressure matches. The misses share one pattern: in the patients the forward wave's height (P1 − DBP) stayed level and the brachial pulse followed it (PPP : (P1 − CDBP) ≈ 1.7–1.8 throughout), so only the reflected augmentation fell. In the model the forward wave shrinks with stroke volume, which lowers cuff and central SBP. Cardiac output was not measured in this study; if it rose in these patients, stroke volume fell less than Pacing mode assumes.</p>
+    <p class="fine">Diastolic pressure matches. The misses share one pattern: in the patients the forward wave's height (P1 − DBP) stayed level and the brachial pulse followed it (PPP : (P1 − CDBP) ≈ 1.7–1.8 throughout), so only the reflected augmentation fell. In the model the forward wave shrinks with stroke volume, which lowers cuff and central SBP. Cardiac output was not measured. In bradycardic pacemaker patients it rises with pacing rate (+35 % from 60 to 90 bpm; Yokota 2023), unlike normal hearts (Ross 1965; Parker 1971). Given Yokota's stroke volumes the model reproduces these patients' central SBP (+2 vs +3 mmHg) and forward-wave height (+1 vs +2 mmHg), so most of the gap is the population, not the arteries (Methods §15).</p>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.wilkinson)}</table></div>
   </div>`;
 }

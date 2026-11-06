@@ -71,7 +71,10 @@ export const MODEL = {
   reflFc: 2.0,              // Hz, Windkessel → dispersed-reflection crossover (v2.5; results change < 1 mmHg RMS over 1.5–3 Hz)
   gMax: 0.97,               // cap on |G(ω)|
   damp: 0.055,              // attenuation per Hz per round trip
-  armLenPerHeight: 0.42,    // aortic root → radial, × height
+  armLenPerHeight: 0.42,    // v1: aortic root → radial, × height
+  armReflPerHeight: 0.30,   // v2.5: effective arm reflection distance × height, and
+  gArmV25: 0.60,            // v2.5 arm reflection: together they put the aorta→brachial transfer-function peak at
+                            // ≈ 2.6× near 4–4.5 Hz (measured 2.5× at 5 Hz, Karamanoglu 1993; 2.0× at 4 Hz, Westerhof 2007)
   brachFrac: 0.62,          // brachial site along the arm
   gArm: 0.45,               // fixed upper-limb reflection
   armAtt: 0.035,            // arm attenuation per Hz
@@ -192,7 +195,7 @@ export const CONTROLS: ControlGroup[] = [
   { group: 'Muscular arteries & reflection', color: 'var(--bwd)', items: [
     { key: 'cMus', label: 'Muscular-artery PWV', min: 4, max: 14, step: 0.1, unit: 'm/s', f: 1,
       tip: 'Smooth-muscle tone of the muscular conduits (femoral, popliteal, brachial). Vasodilators lower it, delaying the reflected wave (Nichols & Singh 2002). Also sets arm-wave speed (amplification).' },
-    { key: 'gamma', label: 'Reflection coefficient Γ', min: 0.05, max: 0.9, step: 0.01, unit: '', f: 2,
+    { key: 'gamma', label: 'Reflection coefficient Γ', min: 0.04, max: 0.9, step: 0.01, unit: '', f: 2,
       tip: 'Fraction of the forward wave reflected at the effective reflection site (impedance mismatch). Vasodilators lower it; vasoconstrictors raise it.' },
     { key: 'lpScale', label: 'Reflection-site position', min: 0.7, max: 1.5, step: 0.01, unit: '×', f: 2,
       tip: 'Scales the effective distance to the major reflection site (Lp = 0.27 × height × factor). Values > 1 shift the site distally (as described in youth).' }
@@ -235,14 +238,14 @@ export const ALL_CONTROLS: Control[] = CONTROLS.flatMap(g => g.items);
    Ejection duration starts at 300 ms (etScale = 300 / Weissler LVET at 70 bpm). */
 export interface StudyProfile { sex: 0 | 1; age: number; height: number; weight: number; diam: number; cAo: number; sv: number; cMus: number; radius: number; gamma: number; }
 export const STUDY_PROFILES: Record<string, StudyProfile> = {
-  'Healthy man (25 y)':   { sex: 0, age: 25, height: 177, weight: 75, diam: 2.70, cAo: 6.2,  sv: 75, cMus: 8.0, radius: 102,   gamma: 0.15 },
-  'Healthy man (45 y)':   { sex: 0, age: 45, height: 176, weight: 77, diam: 3.00, cAo: 7.2,  sv: 73, cMus: 9.0, radius: 101.5, gamma: 0.24 },
-  'Healthy man (65 y)':   { sex: 0, age: 65, height: 174, weight: 75, diam: 3.20, cAo: 10.3, sv: 69, cMus: 10.0, radius: 103,   gamma: 0.26 },
-  'Healthy man (80 y)':   { sex: 0, age: 80, height: 171, weight: 71, diam: 3.30, cAo: 10.9, sv: 65, cMus: 10.7, radius: 100.5, gamma: 0.29 },
-  'Healthy woman (25 y)': { sex: 1, age: 25, height: 163, weight: 61, diam: 2.45, cAo: 6.2,  sv: 63, cMus: 8.0, radius: 100.5, gamma: 0.28 },
-  'Healthy woman (45 y)': { sex: 1, age: 45, height: 162, weight: 62, diam: 2.75, cAo: 7.2,  sv: 59, cMus: 9.0, radius: 98,    gamma: 0.39 },
-  'Healthy woman (65 y)': { sex: 1, age: 65, height: 160, weight: 61, diam: 2.90, cAo: 10.3, sv: 55, cMus: 10.0, radius: 97.5,  gamma: 0.36 },
-  'Healthy woman (80 y)': { sex: 1, age: 80, height: 157, weight: 58, diam: 2.95, cAo: 10.9, sv: 52, cMus: 10.7, radius: 95,    gamma: 0.32 }
+  'Healthy man (25 y)':   { sex: 0, age: 25, height: 177, weight: 75, diam: 2.70, cAo: 6.2,  sv: 75, cMus: 8.0, radius: 102.5, gamma: 0.14 },
+  'Healthy man (45 y)':   { sex: 0, age: 45, height: 176, weight: 77, diam: 3.00, cAo: 7.2,  sv: 73, cMus: 9.0, radius: 100.5, gamma: 0.23 },
+  'Healthy man (65 y)':   { sex: 0, age: 65, height: 174, weight: 75, diam: 3.20, cAo: 10.3, sv: 69, cMus: 10.0, radius: 101.5, gamma: 0.24 },
+  'Healthy man (80 y)':   { sex: 0, age: 80, height: 171, weight: 71, diam: 3.30, cAo: 10.9, sv: 65, cMus: 10.7, radius: 99,    gamma: 0.27 },
+  'Healthy woman (25 y)': { sex: 1, age: 25, height: 163, weight: 61, diam: 2.45, cAo: 6.2,  sv: 63, cMus: 8.0, radius: 100,   gamma: 0.27 },
+  'Healthy woman (45 y)': { sex: 1, age: 45, height: 162, weight: 62, diam: 2.75, cAo: 7.2,  sv: 59, cMus: 9.0, radius: 96.5,  gamma: 0.37 },
+  'Healthy woman (65 y)': { sex: 1, age: 65, height: 160, weight: 61, diam: 2.90, cAo: 10.3, sv: 55, cMus: 10.0, radius: 96,    gamma: 0.32 },
+  'Healthy woman (80 y)': { sex: 1, age: 80, height: 157, weight: 58, diam: 2.95, cAo: 10.9, sv: 52, cMus: 10.7, radius: 94,    gamma: 0.32 }
 };
 /** Reference values for the study profiles. v2.5 fits SVR to cuff SBP (Herbert 2014 central
  *  SBP + amplification, i.e. their healthy cuff SBP) and Γ to AIx (Janner 2010); central SBP
@@ -466,5 +469,9 @@ export const CITATIONS = {
   Westerhof2009: 'Westerhof N, Lankhaar JW, Westerhof BE. The arterial Windkessel. Med Biol Eng Comput 2009;47:131–141.',
   Parker1971: 'Parker JO, Ledwich JR, West RO, Case RB. Pacing-induced changes in stroke volume in the evaluation of myocardial function. Circulation 1971;43:253–261.',
   Wisheart1973: 'Wisheart JD, Wright JEC, Rosenfeldt FL, Ross JK. Atrial and ventricular pacing after open heart surgery. Thorax 1973;28:9–14.',
+  Karamanoglu1993: 'Karamanoglu M, O\'Rourke MF, Avolio AP, Kelly RP. An analysis of the relationship between central aortic and peripheral upper limb pressure waves in man. Eur Heart J 1993;14:160–167.',
+  Westerhof2007: 'Westerhof BE, Guelen I, Stok WJ, et al. Arterial pressure transfer characteristics: effects of travel time. Am J Physiol Heart Circ Physiol 2007;292:H800–H807.',
+  Yokota2023: 'Yokota A, Kabutoya T, Hoshide S, Kario K. Comparison of heart rate and cardiac output of VVI pacemaker settings in patients with atrial fibrillation with bradycardia. J Arrhythm 2023;39:574–579.',
+  Harrison1989: 'Harrison MR, Clifton GD, Sublett KL, DeMaria AN. Effect of heart rate on Doppler indexes of systolic function in humans. J Am Coll Cardiol 1989;14:929–935.',
   Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.'
 } as const;
