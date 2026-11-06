@@ -464,5 +464,7 @@ export const CITATIONS = {
   Avolio1983: 'Avolio AP, Chen SG, Wang RP, et al. Effects of aging on changing arterial compliance and left ventricular load in a northern Chinese urban community. Circulation 1983;68:50–58.',
   Murgo1980: 'Murgo JP, Westerhof N, Giolma JP, Altobelli SA. Aortic input impedance in normal man: relationship to pressure wave forms. Circulation 1980;62:105–116.',
   Westerhof2009: 'Westerhof N, Lankhaar JW, Westerhof BE. The arterial Windkessel. Med Biol Eng Comput 2009;47:131–141.',
+  Parker1971: 'Parker JO, Ledwich JR, West RO, Case RB. Pacing-induced changes in stroke volume in the evaluation of myocardial function. Circulation 1971;43:253–261.',
+  Wisheart1973: 'Wisheart JD, Wright JEC, Rosenfeldt FL, Ross JK. Atrial and ventricular pacing after open heart surgery. Thorax 1973;28:9–14.',
   Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.'
 } as const;
