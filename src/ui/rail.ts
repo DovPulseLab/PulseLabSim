@@ -1,5 +1,5 @@
 /* Left control rail: patient A/B, profile, sliders (Heart · Large arteries · Periphery) and Drugs. */
-import { ACUTE_DRUGS, ALL_CONTROLS, ALL_DRUGS, DRUGS, DRUG_EMAX, DRUG_KINETICS, ENGINE, PRESETS, controlText, isStudyPreset, type Control, type ParamKey } from '../config/physiology';
+import { ACUTE_DRUGS, ALL_CONTROLS, baroFraction, ALL_DRUGS, DRUGS, DRUG_EMAX, DRUG_KINETICS, ENGINE, PRESETS, controlText, isStudyPreset, type Control, type ParamKey } from '../config/physiology';
 import { calibrate } from '../model/calibrate';
 import { stepInput } from '../state/inputs';
 import type { PatientId } from '../state/types';
@@ -9,6 +9,8 @@ import { $, $$, esc } from './dom';
 const GROUPS: { name: string; keys: ParamKey[]; note?: string }[] = [
   { name: 'Patient', keys: ['sex', 'age', 'height', 'weight'],
     note: 'Changing sex, age, height or weight recalculates aortic diameter, aortic PWV and stroke volume from healthy reference data. You can still adjust those sliders afterwards.' },
+  { name: 'Physiologic response', keys: ['resp', 'hrRest'],
+    note: 'Independent lets each input act alone, for studying one variable at a time. Pacing, Exercise and Physiologic add the body\'s usual responses to a change in heart rate or a drug; the adjusted values show in red beside each slider.' },
   { name: 'Heart', keys: ['hr', 'sv', 'etScale'] },
   { name: 'Large arteries', keys: ['cAo', 'diam'] },
   { name: 'Periphery', keys: ['radius', 'cMus', 'gamma', 'lpScale'] }
@@ -118,6 +120,18 @@ const drugText = (ctx: Ctx, id: PatientId) => {
   const names = [...new Set(evs.map(e => ALL_DRUGS[e.drug].short))];
   return names.length ? names.join(' + ') : 'no drugs';
 };
+function respNote(r: { mode: number; svFactor: number; svrFactor: number; mapOpen: number; mapSet: number } | null, ins: { hr: number; hrRest: number; sex: number; age: number }): string {
+  if (!r) return 'each input acts on its own';
+  const pct = (f: number) => `${f >= 1 ? '+' : '−'}${Math.abs(100 * (f - 1)).toFixed(0)} %`;
+  const sv = Math.abs(r.svFactor - 1) > 0.005 ? `SV ${pct(r.svFactor)}` : 'SV unchanged';
+  const svr = Math.abs(r.svrFactor - 1) > 0.005 ? `SVR ${pct(r.svrFactor)}` : 'SVR unchanged';
+  const at = `at ${ins.hr.toFixed(0)} vs ${ins.hrRest.toFixed(0)} bpm rest`;
+  if (r.mode === 1) return `pacing data: ${sv}, ${svr} ${at}`;
+  if (r.mode === 2) return ins.hr > ins.hrRest ? `exercise data: ${sv}, ${svr} ${at}` : 'exercise: acts only above resting HR';
+  const buf = Math.round(100 * baroFraction(ins.sex, ins.age));
+  return `pacing data: ${sv}, ${svr} ${at} · baroreflex buffers ${buf} % of drug effects (${ins.sex === 1 ? 'woman' : 'man'}, ${ins.age.toFixed(0)} y)`;
+}
+
 const shortPreset = (p: string): string => p.replace(/\s*\(.*\)/, '') + (p.match(/\((.*)\)/) ? ', ' + p.match(/\((.*)\)/)![1] : '');
 
 /** Re-render everything that depends on the store (not on beats). */
@@ -179,9 +193,11 @@ export function renderRailBeat(ctx: Ctx): void {
     sv: `cardiac output ${m.co.toFixed(2)} L/min · reference for age/sex/size ${cal.sv.toFixed(0)} mL${beat.effect.svRise > 0.05 ? ` · +${beat.effect.svRise.toFixed(1)} mL from slower HR` : ''}`,
     etScale: `${etNote} · setting ${act.etScale.toFixed(2)} × Weissler`,
     radius: `SVR ${m.svrDyn.toFixed(0)} dyn·s·cm⁻⁵`, cAo: `operating ${m.cAoOp.toFixed(1)} m/s at MAP ${m.map.toFixed(0)} · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cAo.toFixed(1)} (${range2(cal.pwvRange, 1)}) m/s`,
-    diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg · predicted ${cal.diam.toFixed(2)} (${range2(cal.diamRange, 2)}) cm`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s`,
+    diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg · predicted ${cal.diam.toFixed(2)} (${range2(cal.diamRange, 2)}) cm`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cMus.toFixed(1)} m/s (Avolio 1983 slope)`,
     gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`,
     sex: `ejection line ${act.sex === 1 ? '418 − 1.6·HR' : '413 − 1.7·HR'} ms`, age: 'sets the calibration only',
+    resp: respNote(beat.effect.response, p.inputs),
+    hrRest: Math.round(p.inputs.resp) === 0 ? 'used only by Pacing, Exercise and Physiologic' : `SV slider = stroke volume at ${p.inputs.hrRest.toFixed(0)} bpm`,
     weight: `BSA ${cal.bsa.toFixed(2)} m² (Du Bois) · BMI ${(p.inputs.weight / Math.pow(p.inputs.height / 100, 2)).toFixed(1)}`
   };
   for (const c of ALL_CONTROLS) $(`#der-${c.key}`).textContent = der[c.key] ?? '';

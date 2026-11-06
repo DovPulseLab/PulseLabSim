@@ -1,10 +1,10 @@
 /* v2 must reproduce v1 (js/model.js) within 0.5 mmHg / 0.5 %.
    Fixture: tests/fixtures/v1-snapshots.json, made by scripts/snapshot-v1.mjs from the untouched v1 code. */
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import snap from './fixtures/v1-snapshots.json';
 import { simulate } from '../src/model';
 import { applyDrugs } from '../src/model/drugsSteady';
-import { DEFAULTS, DRUGS, PRESETS, isStudyPreset, type Params } from '../src/config/physiology';
+import { DEFAULTS, DRUGS, PRESETS, isStudyPreset, useV1Laws, type Params } from '../src/config/physiology';
 
 // v1 started every profile at the Weissler ejection time (etScale 1.0, 294 ms at 70 bpm);
 // v2 starts at 300 ms. The v1 comparison uses v1's starting value. The healthy study
@@ -37,6 +37,9 @@ function within(key: string, v2: number, v1: number): boolean {
 }
 
 describe('v1 regression snapshots', () => {
+  // v2.5 changed the reflection law; the port is checked with the v1 law switched back on.
+  beforeAll(() => useV1Laws(true));
+  afterAll(() => useV1Laws(false));
   it('covers every preset and every drug', () => {
     for (const name of V1_PRESETS) {
       expect(cases.some(c => c.label === `${name} | no drug`)).toBe(true);

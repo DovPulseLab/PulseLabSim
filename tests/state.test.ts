@@ -30,7 +30,7 @@ describe('inputs', () => {
   it('clamps out-of-range values with a warning and never returns NaN', () => {
     expect(checkInput('hr', 500)).toMatchObject({ value: 180 });
     expect(checkInput('hr', 500).warning).toMatch(/above the maximum/);
-    expect(checkInput('gamma', -1).value).toBe(0.1);
+    expect(checkInput('gamma', -1).value).toBe(0.05);
     for (const bad of [NaN, Infinity, 'abc', null, undefined, {}]) {
       const r = checkInput('cAo', bad);
       expect(r.value).toBe(DEFAULTS.cAo);

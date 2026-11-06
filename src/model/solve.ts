@@ -11,7 +11,7 @@
    At ω = 0, Zin = SVR, so MAP = CO × SVR exactly.
    Brachial/radial pressure come from a second transmission line (the arm).
    ===================================================================== */
-import { DEFAULTS, MODEL, PHYS, type Params } from '../config/physiology';
+import { DEFAULTS, LAWS, MODEL, PHYS, type Params } from '../config/physiology';
 import { abs, add, cx, div, expi, mul, sub, type Cx } from './complex';
 import { derive, type Derived } from './derive';
 import { fft } from './fft';
@@ -36,12 +36,25 @@ export interface BeatResult {
   m: Indices;
 }
 
+/** Scale applied to the terminal reflection coefficient at frequency f (Hz).
+ *  v1: Γ/0.5 at every frequency. That also weakens the reflection near 0 Hz,
+ *  where the whole arterial tree acts as one Windkessel, so late-systolic pressure sags
+ *  toward the flow wave and diastole decays more slowly than R·C.
+ *  v2.5: scale 1 near 0 Hz (Windkessel limit) and Γ/0.5 at the higher
+ *  harmonics, where reflections from many sites partly cancel. Lorentzian crossover
+ *  at MODEL.reflFc. */
+export function reflScale(kRefl: number, f: number): number {
+  if (LAWS.gen === 'v1') return kRefl;
+  return kRefl + (1 - kRefl) / (1 + (f / MODEL.reflFc) ** 2);
+}
+
 /** Reflection term G(ω)·E(ω) seen from the aortic root at frequency f (Hz). */
 export function reflectionGE(d: Derived, f: number): Cx {
   const w = 2 * Math.PI * f;
   const ZL = add(cx(d.zt, 0), div(cx(d.rTerm, 0), cx(1, w * d.rTerm * d.cTerm)));
   let G = div(sub(ZL, cx(d.zc, 0)), add(ZL, cx(d.zc, 0)));
-  G = cx(G.r * d.kRefl, G.i * d.kRefl);
+  const kf = reflScale(d.kRefl, f);
+  G = cx(G.r * kf, G.i * kf);
   const gm = abs(G);
   if (gm > MODEL.gMax) G = cx(G.r * MODEL.gMax / gm, G.i * MODEL.gMax / gm);
   const E = expi(-w * d.dtp, Math.exp(-MODEL.damp * f));

@@ -1,4 +1,4 @@
-import { MODEL, PHYS, type Params } from '../config/physiology';
+import { LAWS, MODEL, PHYS, type Params } from '../config/physiology';
 import { fixedPoint, type FixedPointOptions, type FixedPointResult } from './coupling';
 
 /** Operating parameters derived from the inputs for one beat. */
@@ -68,7 +68,10 @@ export function derive(p: Params, couplingOpts: FixedPointOptions = {}): Derived
   let zt = MODEL.ztOverZc * zc;
   if (zt > MODEL.ztMaxFracSvr * svr) zt = MODEL.ztMaxFracSvr * svr;
   const kRefl = g / MODEL.gammaRef;
-  const rTerm = svr - zt;
+  // v2.5: the arterioles drain toward a zero-flow (critical closing) pressure Pzf, not 0, so the
+  // pulsatile load sees only the resistance above Pzf (Chemla 2017). DC is still MAP = CO × SVR.
+  const pzf = LAWS.gen === 'v2.5' ? MODEL.pzfFrac * svr * qMean : 0;
+  const rTerm = Math.max(MODEL.rTermMinFrac * svr, svr - zt - pzf / qMean);
   const armLen = MODEL.armLenPerHeight * p.height;
   const brachX = MODEL.brachFrac * armLen;
   const gArm = MODEL.gArm;

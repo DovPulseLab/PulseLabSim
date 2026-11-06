@@ -1,4 +1,4 @@
-import { MODEL, PHYS, type Params } from '../config/physiology';
+import { LAWS, MODEL, PHYS, type Params } from '../config/physiology';
 import type { Derived } from './derive';
 
 export type WaveType = 'A' | 'B' | 'C';
@@ -9,6 +9,12 @@ export interface Indices {
   iPk: number; iInf: number; iET: number; iTi: number;
   dtp: number; dtr: number; Ew: number; rm: number; lsEs: number; tti: number; dpti: number; sevr: number;
   svf: number; svrefl: number; bSBP: number; bDBP: number; bPP: number; rSBP: number; rDBP: number;
+  /** intra-arterial brachial pressure (bSBP/bDBP are what a cuff reads; see MODEL.cuff) */
+  iaSBP: number; iaDBP: number;
+  /** central SBP as a cuff-calibrated tonometry device reports it */
+  devCSBP: number;
+  /** zero-flow pressure (mmHg) and Windkessel τ above it, τ′ = (SVR − Pzf/CO)·C (s) */
+  pzf: number; tauEff: number;
   ppa: number; co: number; svrDyn: number; svrWU: number; zcDyn: number;
   ctot: number; svpp: number; tau: number; lp: number;
   cAoOp: number; cMusOp: number; cPath: number; ep: number; et: number;
@@ -105,17 +111,25 @@ export function indices(r: IndexInput): Indices {
   for (let k = 0; k < iET; k++) { svf += (pf[k] - pf[0]) / d.zc * dt; svr2 += (pb[k] - pb[0]) / d.zc * dt; }
   const bS = arrMax(brachial), bD = arrMin(brachial), rS = arrMax(radial), rD = arrMin(radial);
   const ppa = (bS - bD) / PP;
+  // Cuff reading: Picone 2017 (invasive IPD meta-analysis) — cuff SBP 5.7 mmHg below and
+  // cuff DBP 5.5 mmHg above intra-arterial brachial pressure. v1 had no cuff layer.
+  const cuffOn = LAWS.gen === 'v2.5';
+  const cS = cuffOn ? bS - MODEL.cuff.sbp : bS, cD = cuffOn ? bD + MODEL.cuff.dbp : bD;
+  // Tonometry device: the pulse is calibrated to cuff SBP/DBP, then mapped to the aorta, so
+  // the reported central SBP inherits the cuff error (scale = cuff PP / true brachial PP).
+  const devCSBP = cD + (Ps - Pd) * (cS - cD) / Math.max(1e-6, bS - bD);
   const co = params.sv * params.hr / 1000;     // L/min
   const dec = diastolicDecay(p, dt, iET);
   return {
     Ps, Pd, PP, map, Pi, P1, P2, i1, i2, AP, AIx, AIx75, type, iPk, iInf, iET, iTi,
     dtp: d.dtp * 1000, dtr: dtr * 1000, Ew, rm, lsEs, tti, dpti, sevr,
-    svf, svrefl: svr2, bSBP: bS, bDBP: bD, bPP: bS - bD, rSBP: rS, rDBP: rD,
+    svf, svrefl: svr2, bSBP: cS, bDBP: cD, bPP: cS - cD, rSBP: rS, rDBP: rD, iaSBP: bS, iaDBP: bD, devCSBP,
     ppa, co, svrDyn: d.svr * DYN, svrWU: d.svr * 60, zcDyn: d.zc * DYN,
     ctot: d.cTot, svpp: params.sv / PP, tau: d.svr * d.cTot, lp: d.lp,
     cAoOp: d.cAoOp, cMusOp: d.cMusOp, cPath: d.cPath, ep: d.ep, et: d.ET * 1000,
     peakQ: arrMax(q), fwdAmp: arrMax(pf) - arrMin(pf), bwdAmp: arrMax(pb) - arrMin(pb), cMAP: d.map,
     tauFit: dec.tau, decayRate: dec.rate, decayFall: dec.fall, iDecay: dec.i0, decayP0: dec.p0,
-    tauFree: dec.tauFree, pInf: dec.pInf
+    tauFree: dec.tauFree, pInf: dec.pInf,
+    pzf: cuffOn ? MODEL.pzfFrac * d.map : 0, tauEff: d.svr * (1 - (cuffOn ? MODEL.pzfFrac : 0)) * d.cTot
   };
 }

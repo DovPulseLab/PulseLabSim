@@ -29,7 +29,7 @@ export function rampValue(r: Ramp, beat: number): number {
  */
 /** Inputs that switch at once instead of easing: sex is male or female, never between, and
  *  age and weight only describe the patient (they act through calibration, not the beat). */
-const STEP_KEYS: ReadonlySet<ParamKey> = new Set<ParamKey>(['sex', 'age', 'weight']);
+const STEP_KEYS: ReadonlySet<ParamKey> = new Set<ParamKey>(['sex', 'age', 'weight', 'resp']);
 
 export function retarget(ramps: Ramps, current: Params, targets: Params, lastBeat: number, beats: number = ENGINE.rampBeats): Ramps {
   const next: Ramps = { ...ramps };

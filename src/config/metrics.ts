@@ -17,8 +17,11 @@ const SL = (ok: number, warn: number) => (v: number): Status => v >= ok ? 'ok' :
 
 export const METRICS: { g: string; items: Metric[] }[] = [
   { g: 'Brachial cuff pressure', items: [
-    { k: 'bSBP', l: 'Brachial SBP', u: 'mmHg', f: 0, st: S(129, 139), tip: 'Peak of the simulated brachial wave — what a cuff would read.' },
-    { k: 'bDBP', l: 'Brachial DBP', u: 'mmHg', f: 0, st: v => v < 60 ? 'warn' : v < 80 ? 'ok' : v < 90 ? 'warn' : 'bad', tip: 'Diastolic pressure is nearly the same everywhere in the large arteries.' },
+    { k: 'bSBP', l: 'Cuff SBP', u: 'mmHg', f: 0, st: S(129, 139), tip: 'What an upper-arm cuff reads: intra-arterial brachial SBP − 5.7 mmHg (Picone 2017, invasive meta-analysis).' },
+    { k: 'bDBP', l: 'Cuff DBP', u: 'mmHg', f: 0, st: v => v < 60 ? 'warn' : v < 80 ? 'ok' : v < 90 ? 'warn' : 'bad', tip: 'What a cuff reads: intra-arterial brachial DBP + 5.5 mmHg (Picone 2017).' },
+    { k: 'iaSBP', l: 'Intra-arterial brachial SBP', u: 'mmHg', f: 0, tip: 'Peak of the simulated brachial pressure wave, as an arterial line would read it.' },
+    { k: 'iaDBP', l: 'Intra-arterial brachial DBP', u: 'mmHg', f: 0, tip: 'Minimum of the simulated brachial pressure wave.' },
+    { k: 'devCSBP', l: 'Central SBP (device estimate)', u: 'mmHg', f: 0, tip: 'What a cuff-calibrated tonometry device would report: the central pulse scaled by cuff PP / true brachial PP, so it inherits the cuff error. The true aortic value is Central SBP.' },
     { k: 'bPP', l: 'Brachial PP', u: 'mmHg', f: 0, st: S(60, 70), tip: 'Brachial SBP − DBP.' },
     { k: 'map', l: 'Mean arterial pressure', u: 'mmHg', f: 0, st: v => v < 70 ? 'warn' : v <= 100 ? 'ok' : v <= 110 ? 'warn' : 'bad', tip: 'MAP = CO × SVR (Eq. 1, Nichols & Edwards). Identical centrally and peripherally.' }
   ]},
@@ -51,13 +54,15 @@ export const METRICS: { g: string; items: Metric[] }[] = [
     { k: 'zcDyn', l: 'Characteristic impedance Zc', u: 'dyn·s·cm⁻⁵', f: 0, tip: 'Zc = ρc/A. Index of proximal aortic stiffness; sets the forward wave for a given flow.' },
     { k: 'ctot', l: 'Total arterial compliance', u: 'mL/mmHg', f: 2, tip: 'C ≈ V / ρc² (Bramwell–Hill). Governs diastolic decay.' },
     { k: 'svpp', l: 'SV / PP', u: 'mL/mmHg', f: 2, tip: 'Simple clinical surrogate of compliance.' },
-    { k: 'tau', l: 'Windkessel time constant RC', u: 's', f: 2, tip: 'τ = SVR × C, the decay time constant the two-element Windkessel predicts. Shorter τ = faster diastolic run-off = lower DBP.' },
+    { k: 'pzf', l: 'Zero-flow pressure Pzf', u: 'mmHg', f: 0, tip: 'Pressure toward which the arterioles drain (critical closing pressure), 0.6 × MAP. Invasive diastolic decay heads to ≈ 58 ± 8 mmHg (Yamakado 2018) or 71 ± 12 mmHg (Chemla 2017), not 0.' },
+    { k: 'tauEff', l: 'Windkessel τ′ above Pzf', u: 's', f: 2, tip: 'τ′ = (SVR − Pzf/CO) × C: the time constant of the decay toward Pzf. Shorter than R·C because only the resistance above Pzf drains the arteries (Chemla 2017: effective R ≈ 70 % below SVR).' },
+    { k: 'tau', l: 'Windkessel time constant τ = R·C', u: 's', f: 2, st: v => v < 0.75 ? 'warn' : v <= 2.0 ? 'ok' : 'warn', tip: 'τ = SVR × total compliance: the diastolic time constant set by the model\'s resistance and compliance. Shorter τ = faster diastolic run-off = lower DBP. The conventional τ, which assumes the decay heads to 0 mmHg; invasive τ with that assumption ≈ 1.4 ± 0.3 s (Chemla 2017). See also τ′ above Pzf.' },
     { k: 'cAoOp', l: 'Aortic PWV (operating)', u: 'm/s', f: 1, tip: 'Intrinsic PWV adjusted passively for MAP (elastic arteries stiffen at higher distending pressure).' },
     { k: 'ep', l: 'Peterson modulus Ep', u: 'mmHg', f: 0, tip: 'Ep = D·ΔP/ΔD ≈ 2ρc² (Eq. 6, Nichols & Edwards).' }
   ]},
   { g: 'Diastolic decay', items: [
-    { k: 'tauFit', l: 'Diastolic decay time constant τ', u: 's', f: 2, st: v => v < 0.75 ? 'warn' : v <= 2.0 ? 'ok' : 'warn',
-      tip: 'How fast central pressure falls once the aortic valve closes. P(t) = P0·e^(−t/τ) is fitted to the last two-thirds of diastole (asymptote 0 mmHg). Larger τ = slower run-off. Invasive studies with the same assumption report ≈ 1.4 ± 0.3 s (Chemla 2017).' },
+    { k: 'tauFit', l: 'Decay τ fitted to the waveform (asymptote 0)', u: 's', f: 2,
+      tip: 'Measured from the waveform: P(t) = P0·e^(−t/τ) fitted to the last two-thirds of diastole (asymptote 0 mmHg), as done on catheter traces (≈ 1.4 ± 0.3 s; Chemla 2017). Because diastole heads toward Pzf rather than 0, this fit runs longer than R·C (Methods §15).' },
     { k: 'decayRate', l: 'Diastolic decay rate', u: 'mmHg/s', f: 0,
       tip: 'Mean fall of central pressure per second over the same window: (pressure at the start of the window − end-diastolic pressure) ÷ time. Rises with stiffer arteries, lower SVR and higher heart rate.' },
     { k: 'decayFall', l: 'Pressure fall over the fit window', u: 'mmHg', f: 1,
@@ -98,6 +103,6 @@ export const CARDS: Card[] = [
   { id: 'pwv', l: 'Aortic PWV', v: r => r.m.cAoOp.toFixed(1), d: (r, b) => r.m.cAoOp - b.m.cAoOp, u: 'm/s', f: 1, st: r => S(8, 10)(r.m.cAoOp), explain: 'cAoOp' },
   { id: 'dtp', l: 'Δtp', v: r => r.m.dtp.toFixed(0), d: (r, b) => r.m.dtp - b.m.dtp, u: 'ms', f: 0, explain: 'dtp' },
   { id: 'ew', l: 'ΔEw', v: r => (r.m.Ew / 1000).toFixed(1), d: (r, b) => (r.m.Ew - b.m.Ew) / 1000, u: '×10³', f: 1, st: r => S(5000, 12000)(r.m.Ew), explain: 'Ew' },
-  { id: 'decay', l: 'Diastolic τ', v: r => r.m.tauFit.toFixed(2), d: (r, b) => r.m.tauFit - b.m.tauFit, u: 's', f: 2, explain: 'tauFit' },
+  { id: 'decay', l: 'τ = R·C', v: r => r.m.tau.toFixed(2), d: (r, b) => r.m.tau - b.m.tau, u: 's', f: 2, explain: 'tau' },
   { id: 'sevr', l: 'SEVR', v: r => r.m.sevr.toFixed(0), d: (r, b) => r.m.sevr - b.m.sevr, u: '%', f: 0, st: r => SL(130, 100)(r.m.sevr), explain: 'sevr' }
 ];
