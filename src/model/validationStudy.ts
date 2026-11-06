@@ -11,6 +11,7 @@ import { DEFAULTS, MODEL, PRESETS, STUDY_PROFILES, STUDY_TARGETS, weisslerMs, ty
 import { aortaDiameter, bsaDuBois, pwvNormal } from './calibrate';
 import { diastolicDecay } from './indices';
 import { buildCycle } from './cycle';
+import { applyDrugEffects, type DrugEvent } from '../engine/kinetics';
 import { simulate } from './solve';
 import type { Verdict } from './validation';
 
@@ -59,6 +60,7 @@ export interface StudyReport {
   heartRate: StudyCheck[];
   decay: StudyCheck[];
   cycle: StudyCheck[];
+  response: StudyCheck[];
 }
 
 const within = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
@@ -173,5 +175,37 @@ export function runStudyValidation(): StudyReport {
       verdict: diaFrac(c180) < 50 ? 'pass' : 'fail' }
   ];
 
-  return { profiles, heartRate, decay, cycle };
+  /* physiologic response modes (live engine) */
+  const live = (p: Partial<Params>, drug?: string) => {
+    const evs: DrugEvent[] = drug ? [{ id: 1, drug, mode: 'bolus', t0: 0, tStop: null, dose: 1 }] : [];
+    const e = applyDrugEffects({ ...DEFAULTS, ...p }, evs, 60);
+    return { e, m: simulate(e.params).m };
+  };
+  const rest = live({});
+  const ind100 = live({ hr: 100 }), pace100 = live({ hr: 100, resp: 1 }), phys100 = live({ hr: 100, resp: 3 });
+  const ex130 = live({ hr: 130, resp: 2 });
+  const indPhe = live({}, 'phe'), physPhe = live({ resp: 3 }, 'phe');
+  const indNtg = live({}, 'ntg'), physNtg = live({ resp: 3 }, 'ntg');
+  const frac = (open: number, closed: number, set: number) => 1 - (closed - set) / (open - set);
+  const svrDrop = 1 - ex130.m.svrDyn / rest.m.svrDyn;
+  const response: StudyCheck[] = [
+    { what: 'Independent: inputs act alone (HR 70 → 100 raises CO and MAP in proportion)', model: `CO ${rest.m.co.toFixed(1)} → ${ind100.m.co.toFixed(1)} L/min, MAP ${rest.m.map.toFixed(0)} → ${ind100.m.map.toFixed(0)}`, reference: 'MAP × 100/70 (flow source, SVR fixed)', source: 'model definition',
+      verdict: Math.abs(ind100.m.map / rest.m.map - 100 / 70) < 0.01 ? 'pass' : 'fail' },
+    { what: 'Pacing 70 → 100 bpm: cardiac output and MAP held', model: `CO ${pace100.m.co.toFixed(2)} L/min, MAP ${pace100.m.map.toFixed(0)} mmHg`, reference: `CO ${rest.m.co.toFixed(2)}, MAP ≈ ${rest.m.map.toFixed(0)} (pacing changes CO and MAP little)`, source: 'Wilkinson 2000',
+      verdict: Math.abs(pace100.m.co / rest.m.co - 1) < 0.01 && Math.abs(pace100.m.map - rest.m.map) < 2 ? 'pass' : 'fail' },
+    { what: 'Pacing 70 → 100 bpm: AIx falls, pulse-pressure amplification rises', model: `AIx ${rest.m.AIx.toFixed(0)} → ${pace100.m.AIx.toFixed(0)} %, PPA ${rest.m.ppa.toFixed(2)} → ${pace100.m.ppa.toFixed(2)}`, reference: 'both directions as observed', source: 'Wilkinson 2000',
+      verdict: pace100.m.AIx < rest.m.AIx && pace100.m.ppa > rest.m.ppa ? 'pass' : 'fail' },
+    { what: 'Exercise to 130 bpm: SVR falls, MAP rises modestly', model: `SVR −${(100 * svrDrop).toFixed(0)} %, MAP ${rest.m.map.toFixed(0)} → ${ex130.m.map.toFixed(0)} mmHg`, reference: 'SVR falls by roughly a third to a half; MAP up ≈ 10–20 %', source: 'exercise physiology (typical)',
+      verdict: svrDrop > 0.3 && within(ex130.m.map / rest.m.map, 1.08, 1.22) ? 'pass' : 'near' },
+    { what: 'Exercise to 130 bpm: systolic rises, diastolic about the same', model: `cuff ${rest.m.bSBP.toFixed(0)}/${rest.m.bDBP.toFixed(0)} → ${ex130.m.bSBP.toFixed(0)}/${ex130.m.bDBP.toFixed(0)} mmHg`, reference: 'SBP up > 15 mmHg; DBP within ± 10 mmHg', source: 'exercise physiology (typical)',
+      verdict: ex130.m.bSBP - rest.m.bSBP > 15 && Math.abs(ex130.m.bDBP - rest.m.bDBP) <= 10 ? 'pass' : 'near' },
+    { what: 'Physiologic at 100 bpm: MAP stays near rest', model: `MAP ${phys100.m.map.toFixed(0)} mmHg`, reference: `${rest.m.map.toFixed(0)} ± 3 mmHg`, source: 'model definition',
+      verdict: Math.abs(phys100.m.map - rest.m.map) <= 3 ? 'pass' : 'fail' },
+    { what: 'Physiologic: baroreflex buffers phenylephrine', model: `MAP rise ${(indPhe.m.map - rest.m.map).toFixed(0)} → ${(physPhe.m.map - rest.m.map).toFixed(0)} mmHg (${(100 * frac(indPhe.m.map, physPhe.m.map, rest.m.map)).toFixed(0)} % buffered)`, reference: '≈ 60 % of the change corrected (closed-loop gain ≈ 1.5)', source: 'baroreflex physiology (typical)',
+      verdict: within(frac(indPhe.m.map, physPhe.m.map, rest.m.map), 0.45, 0.75) ? 'pass' : 'near' },
+    { what: 'Physiologic: baroreflex buffers nitroglycerin', model: `MAP fall ${(rest.m.map - indNtg.m.map).toFixed(0)} → ${(rest.m.map - physNtg.m.map).toFixed(0)} mmHg (${(100 * frac(indNtg.m.map, physNtg.m.map, rest.m.map)).toFixed(0)} % buffered)`, reference: '≈ 60 % of the change corrected', source: 'baroreflex physiology (typical)',
+      verdict: within(frac(indNtg.m.map, physNtg.m.map, rest.m.map), 0.45, 0.75) ? 'pass' : 'near' }
+  ];
+
+  return { profiles, heartRate, decay, cycle, response };
 }

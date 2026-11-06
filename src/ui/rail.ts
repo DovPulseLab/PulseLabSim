@@ -9,6 +9,8 @@ import { $, $$, esc } from './dom';
 const GROUPS: { name: string; keys: ParamKey[]; note?: string }[] = [
   { name: 'Patient', keys: ['sex', 'age', 'height', 'weight'],
     note: 'Changing sex, age, height or weight recalculates aortic diameter, aortic PWV and stroke volume from healthy reference data. You can still adjust those sliders afterwards.' },
+  { name: 'Physiologic response', keys: ['resp', 'hrRest'],
+    note: 'Independent lets each input act alone, for studying one variable at a time. Pacing, Exercise and Physiologic add the body\'s usual responses to a change in heart rate or a drug; the adjusted values show in red beside each slider.' },
   { name: 'Heart', keys: ['hr', 'sv', 'etScale'] },
   { name: 'Large arteries', keys: ['cAo', 'diam'] },
   { name: 'Periphery', keys: ['radius', 'cMus', 'gamma', 'lpScale'] }
@@ -118,6 +120,16 @@ const drugText = (ctx: Ctx, id: PatientId) => {
   const names = [...new Set(evs.map(e => ALL_DRUGS[e.drug].short))];
   return names.length ? names.join(' + ') : 'no drugs';
 };
+function respNote(r: { mode: number; svFactor: number; svrFactor: number; mapOpen: number; mapSet: number } | null, ins: { hr: number; hrRest: number }): string {
+  if (!r) return 'each input acts on its own';
+  const pct = (f: number) => `${f >= 1 ? '+' : '−'}${Math.abs(100 * (f - 1)).toFixed(0)} %`;
+  const sv = Math.abs(r.svFactor - 1) > 0.005 ? `SV ${pct(r.svFactor)}` : 'SV unchanged';
+  const svr = Math.abs(r.svrFactor - 1) > 0.005 ? `SVR ${pct(r.svrFactor)}` : 'SVR unchanged';
+  if (r.mode === 1) return `cardiac output held: ${sv} at ${ins.hr.toFixed(0)} vs ${ins.hrRest.toFixed(0)} bpm rest`;
+  if (r.mode === 2) return ins.hr > ins.hrRest ? `exercise: ${sv}, ${svr}, MAP target ${r.mapSet.toFixed(0)} mmHg` : 'exercise: acts only above resting HR';
+  return `${sv} · baroreflex ${svr}${Math.abs(r.mapOpen - r.mapSet) < 0.5 ? `, MAP at set point ${r.mapSet.toFixed(0)} mmHg` : `, MAP ${r.mapOpen.toFixed(0)} pulled toward set point ${r.mapSet.toFixed(0)} mmHg`}`;
+}
+
 const shortPreset = (p: string): string => p.replace(/\s*\(.*\)/, '') + (p.match(/\((.*)\)/) ? ', ' + p.match(/\((.*)\)/)![1] : '');
 
 /** Re-render everything that depends on the store (not on beats). */
@@ -182,6 +194,8 @@ export function renderRailBeat(ctx: Ctx): void {
     diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg · predicted ${cal.diam.toFixed(2)} (${range2(cal.diamRange, 2)}) cm`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s`,
     gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`,
     sex: `ejection line ${act.sex === 1 ? '418 − 1.6·HR' : '413 − 1.7·HR'} ms`, age: 'sets the calibration only',
+    resp: respNote(beat.effect.response, p.inputs),
+    hrRest: Math.round(p.inputs.resp) === 0 ? 'used only by Pacing, Exercise and Physiologic' : `SV slider = stroke volume at ${p.inputs.hrRest.toFixed(0)} bpm`,
     weight: `BSA ${cal.bsa.toFixed(2)} m² (Du Bois) · BMI ${(p.inputs.weight / Math.pow(p.inputs.height / 100, 2)).toFixed(1)}`
   };
   for (const c of ALL_CONTROLS) $(`#der-${c.key}`).textContent = der[c.key] ?? '';

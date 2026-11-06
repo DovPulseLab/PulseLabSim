@@ -79,6 +79,11 @@ export function renderValidation(): void {
     <h2>7 · Cardiac cycle diagram (v2.2)</h2>
     <p>The Wiggers diagram combines the model's aortic pressure and flow with schematic LV, left-atrial and volume curves (Methods §12). These checks confirm the schematic parts stay consistent with the modelled beat and give normal timings. Default adult at 70 bpm; the last row at 180 bpm with cardiac output held.</p>
     <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows(s5.cycle)}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>8 · Physiologic response modes (v2.3)</h2>
+    <p>The <i>Physiologic response</i> setting (Methods §13) decides what else changes when heart rate or a drug changes. Independent keeps every input on its own; the other modes add typical responses. Default adult, resting heart rate 70 bpm.</p>
+    <div class="table-wrap"><table class="vt"><tr><th>Check</th><th>Model</th><th>Reference</th><th>Source</th><th></th></tr>${checkRows(s5.response)}</table></div>
   </div>`;
 }
 

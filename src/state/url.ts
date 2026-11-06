@@ -9,7 +9,7 @@ import { defaultState, TABS, type AppState, type PatientId, type PatientState, t
 
 const SHORT: Record<string, string> = {
   hr: 'h', sv: 's', etScale: 'e', radius: 'r', cAo: 'a', diam: 'd', cMus: 'm', gamma: 'g', lpScale: 'l', height: 'H',
-  sex: 'x', age: 'y', weight: 'W'
+  sex: 'x', age: 'y', weight: 'W', resp: 'R', hrRest: 'T'
 };
 const LONG: Record<string, ParamKey> = Object.fromEntries(Object.entries(SHORT).map(([k, v]) => [v, k as ParamKey]));
 const PRESET_NAMES = Object.keys(PRESETS);

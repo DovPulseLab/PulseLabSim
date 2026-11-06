@@ -23,6 +23,8 @@ export interface Params {
   sex: number;       // 0 = male, 1 = female (Weissler LVET; calibration)
   age: number;       // years (calibration only)
   weight: number;    // kg (BSA for calibration only)
+  resp: number;      // physiologic response: 0 independent, 1 pacing, 2 exercise, 3 physiologic rest (see RESPONSE)
+  hrRest: number;    // bpm, resting heart rate the response is anchored to (the SV slider = SV at this HR)
 }
 
 export type ParamKey = keyof Params;
@@ -95,7 +97,9 @@ export const DEFAULTS: Readonly<Params> = {
   lvedp: 8,
   sex: 0,
   age: 45,
-  weight: 77
+  weight: 77,
+  resp: 0,
+  hrRest: 70
 };
 
 /* ---------------- sliders (from v1 js/content.js) ---------------- */
@@ -177,6 +181,12 @@ export const CONTROLS: ControlGroup[] = [
     { key: 'lpScale', label: 'Reflection-site position', min: 0.7, max: 1.5, step: 0.01, unit: '×', f: 2,
       tip: 'Scales the effective distance to the major reflection site (Lp = 0.27 × height × factor). Values > 1 shift the site distally (as described in youth).' }
   ]},
+  { group: 'Physiologic response', color: 'var(--accent)', items: [
+    { key: 'resp', label: 'When HR or drugs change', min: 0, max: 3, step: 1, unit: '', f: 0, kind: 'toggle', options: ['Independent', 'Pacing', 'Exercise', 'Physiologic'], model: false,
+      tip: 'Independent: every input acts alone (for studying one variable at a time). Pacing: cardiac output is held as heart rate changes, so stroke volume falls when HR rises (shorter filling). Exercise: above resting HR, stroke volume rises up to 25 % and SVR falls so MAP rises only ≈ 2.5 % per 10 bpm. Physiologic: pacing-type stroke volume plus a baroreflex that corrects 60 % of any change in MAP from HR or drugs by adjusting SVR.' },
+    { key: 'hrRest', label: 'Resting heart rate (reference)', min: 40, max: 120, step: 1, unit: 'bpm', f: 0, model: false,
+      tip: 'The heart rate the stroke-volume slider and the baroreflex set-point refer to. With Pacing, Exercise or Physiologic on, the SV slider means stroke volume at this heart rate. Loading a profile sets it to the profile\'s heart rate.' }
+  ]},
   { group: 'Patient', color: 'var(--brach)', items: [
     { key: 'sex', label: 'Sex', min: 0, max: 1, step: 1, unit: '', f: 0, kind: 'toggle', options: ['Male', 'Female'],
       tip: 'Selects the sex-specific Weissler ejection-time line and the sex-specific reference equations used to calibrate aortic diameter and stroke volume. Changing it recalibrates aortic diameter, aortic PWV and stroke volume.' },
@@ -250,6 +260,8 @@ export const PRESETS: Record<string, Partial<Params>> = {
   'Tall stature (195 cm)':  { height: 195 },
   ...studyPresets()
 };
+// the response modes anchor to each profile's own resting heart rate
+for (const p of Object.values(PRESETS)) if (p.hr != null && p.hrRest == null) p.hrRest = p.hr;
 
 /* -------- long-term drug effects (from v1, multiplicative / additive) --------
    Based on Nichols & Singh 2002 and Townsend et al. 2015 (Table 1):
@@ -344,6 +356,17 @@ export const DRUG_EMAX = { emax: 1.2 } as const;
 export const SV_HR_COUPLING = { exponent: 0.5, illustrative: true } as const;
 
 export const BAROREFLEX = { drug: 'phe', bpmPerMmHg: 0.3, maxFall: 20 } as const;
+
+/** Physiologic response modes (Params.resp). Applied in the live engine after drugs. */
+export const RESPONSE = {
+  modes: ['Independent', 'Pacing', 'Exercise', 'Physiologic'] as const,
+  /** Exercise: SV rises by up to 25 % over the first 50 bpm above rest, then plateaus */
+  exSvGain: 0.25, exSvSpan: 50,
+  /** Exercise: MAP rises 0.25 % per bpm above rest (≈ +20 % at +80 bpm); SVR falls to match */
+  exMapPerBpm: 0.0025,
+  /** Physiologic: fraction of a MAP change from HR or drugs the baroreflex corrects (closed-loop gain ≈ 1.5) */
+  baroFraction: 0.6
+} as const;
 
 /** Live engine settings. */
 export const ENGINE = {

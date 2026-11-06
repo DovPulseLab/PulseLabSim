@@ -1,6 +1,6 @@
 /* Methods tab: equations (from v1), v2 engine and drug methods, illustrative drug values,
    differences from the v2 specification, limitations and references. */
-import { ALL_DRUGS, BAROREFLEX, CITATIONS, DRUG_EMAX, DRUG_KINETICS, ENGINE, MODEL, SV_HR_COUPLING, STUDY_PROFILES, STUDY_TARGETS, PRESETS, DEFAULTS, PHYS, weisslerMs } from './physiology';
+import { ALL_DRUGS, BAROREFLEX, CITATIONS, DRUG_EMAX, DRUG_KINETICS, ENGINE, MODEL, SV_HR_COUPLING, RESPONSE, STUDY_PROFILES, STUDY_TARGETS, PRESETS, DEFAULTS, PHYS, weisslerMs } from './physiology';
 import { CALIB, CAMPENS_AA, PWV_NORMAL, SVI_CMR, bsaDuBois } from '../model/calibrate';
 import { HERBERT_NORMAL, TAU_FREE_REF, TAU_REF } from '../model/validationStudy';
 
@@ -163,7 +163,17 @@ ${studyDataHtml()}
 <p>Isovolumic relaxation is capped at 45 % of diastole; at very high heart rates τ is shortened so the LV still meets atrial pressure at mitral opening, and the caption says so. Isovolumic contraction and the electromechanical delay are held constant, although both shorten slightly with heart rate in real hearts. The ECG shows timing only. With sound on, S1 and S2 are synthesised as short damped tones with a falling pitch plus low-passed noise (S1 ≈ 70 Hz, 140 ms; S2 ≈ 110 Hz, 100 ms, pitched slightly above real heart sounds so laptop speakers can play them), triggered when the cursor passes mitral and aortic closure.</p>
 <p>Display: a running strip (2.5 beats scrolling right to left like the monitor, newest at the right) or one beat with a sweeping cursor; real time or ½, ¼, ⅛ speed. The tab has its own play/pause (Space or K on this tab), a scrubber, ±1 and ±10 ms steps (, and . keys; Shift for 10 ms), jump-to-event buttons, and click-to-pause on the diagram. At high heart rates the tab follows the current beat; if heart rate changes, the cursor keeps the same fraction of the beat.</p>
 
-<h3>13 · Assumptions &amp; limitations</h3>
+<h3>13 · Physiologic response modes (v2.3)</h3>
+<p>Each patient has a <b>Physiologic response</b> setting and a <b>resting heart rate</b> it refers to (set from the profile; 70 bpm by default). It acts in the live simulator after drugs; the Sweep tab and the reference tables always use Independent so a single input can be studied alone.</p>
+<ul>
+  <li><b>Independent</b> (default): every input acts on its own. The heart is a flow source, so raising HR with SV unchanged raises cardiac output and MAP in proportion.</li>
+  <li><b>Pacing</b>: cardiac output is held as the set heart rate moves from rest: SV<sub>eff</sub> = SV × HR<sub>rest</sub>/HR (shorter filling time), as in atrial-pacing studies (Wilkinson 2000).</li>
+  <li><b>Exercise</b>: above resting HR, SV rises by up to ${(RESPONSE.exSvGain * 100).toFixed(0)} % over the first ${RESPONSE.exSvSpan} bpm, and SVR falls (muscle vasodilation) so MAP rises only ${(RESPONSE.exMapPerBpm * 1000).toFixed(1)} % per 10 bpm: SVR<sub>eff</sub> = SVR × MAP<sub>target</sub> / (MAP<sub>rest</sub> × CO ratio).</li>
+  <li><b>Physiologic</b>: pacing-type SV plus a baroreflex on SVR: SVR<sub>eff</sub> = SVR × (MAP<sub>set</sub>/MAP<sub>open</sub>)<sup>${RESPONSE.baroFraction}</sup>, which corrects ${(RESPONSE.baroFraction * 100).toFixed(0)} % of a MAP change (closed-loop gain ≈ 1.5). MAP<sub>set</sub> is the patient's own inputs at resting HR without drugs, so moving the sliders sets a new resting state and the reflex buffers heart-rate changes and drugs.</li>
+</ul>
+<p>The SV and exercise couplings follow the heart rate you set; heart-rate changes caused by drugs keep each drug's own stroke-volume effect, so drug pharmacology is not counted twice. The phenylephrine heart-rate reflex and the illustrative SV rise when a drug slows the heart apply in every mode. All couplings are simple, typical-value rules, not a model of the autonomic nervous system; above ≈ 150 bpm they are extrapolations (in real tachycardia cardiac output eventually falls).</p>
+
+<h3>14 · Assumptions &amp; limitations</h3>
 <ul>
   <li>Study profiles: pulse-pressure amplification (cuff − central SBP) is about right at 25–45 y but high at 65–80 y (≈ 13–15 mmHg vs means of 6–8 and 90th percentiles of 12–17 mmHg; Herbert 2014), because the model uses one fixed upper-limb transfer function. At 65–80 y cuff DBP is ≈ 60–63 mmHg and cuff SBP ≈ 128–132 mmHg.</li>
   <li>Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote). With the asymptote fitted, τ is 0.19–0.22 s at 65–80 y, just under the invasive range (0.23–0.65 s).</li>
@@ -175,6 +185,6 @@ ${studyDataHtml()}
   <li>Reflection magnitude depends heavily on the separation method; compare directions, not absolute values.</li>
 </ul>
 
-<h3>14 · References</h3>
+<h3>15 · References</h3>
 <ol>${Object.values(CITATIONS).map(c => `<li>${c}</li>`).join('')}</ol>`;
 }
