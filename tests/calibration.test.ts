@@ -138,3 +138,15 @@ describe('study-profile validation', () => {
     expect(fails).toEqual(['Healthy man (25 y): Diastolic decay τ (asymptote 0)']);
   });
 });
+
+describe('v2.4 model review checks', () => {
+  const laws = runStudyValidation().laws;
+  it('pressure → PWV slope and ejection-time rows pass against data', () => {
+    for (const c of laws.slice(0, 4)) expect(c.verdict, c.what).toBe('pass');
+  });
+  it('the fitted-τ vs R·C limitation is reported, not hidden', () => {
+    const last = laws[laws.length - 1];
+    expect(last.what).toMatch(/Known limitation/);
+    expect(last.verdict).toBe('fail');
+  });
+});

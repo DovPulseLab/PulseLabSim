@@ -48,7 +48,9 @@ export const MODEL = {
   lvetBF: 1.6,
   etMin: 0.15,              // s
   etMaxFrac: 0.6,           // of cycle length
-  /** Passive MAP → stiffness coupling: c = c0·(1 + k·(MAP − mapRef)) */
+  /** Passive MAP → stiffness coupling: c = c0·(1 + k·(MAP − mapRef)). Aortic slope k·c0 =
+   *  0.45 m/s per 10 mmHg at c0 7.5 m/s and 0.53 at 8.8 m/s, inside the measured
+   *  0.6 ± 0.3 (Butlin 2017) and 0.65 (95 % CI 0.46–0.83; McNally 2024). Validation §9. */
   mapRef: 93,
   kAo: 0.006,               // elastic aorta, per mmHg
   kMus: 0.004,              // muscular arteries, per mmHg
@@ -437,5 +439,9 @@ export const CITATIONS = {
   Christou2003: 'Christou DD, Jones PP, Seals DR. Baroreflex buffering in sedentary and endurance exercise-trained healthy men. Hypertension 2003; doi:10.1161/01.HYP.0000072011.17095.ae.',
   Christou2005: 'Christou DD, Jones PP, Jordan J, Diedrich A, Robertson D, Seals DR. Women have lower tonic autonomic support of arterial blood pressure and less effective baroreflex buffering than men. Circulation 2005;111:494–498.',
   DuBois1916: 'Du Bois D, Du Bois EF. A formula to estimate the approximate surface area if height and weight be known. Arch Intern Med 1916;17:863–871.',
-  Liu1986: 'Liu Z, Brin KP, Yin FC. Estimation of total arterial compliance: an improved method and evaluation of current methods. Am J Physiol 1986;251:H588–H600.'
+  Liu1986: 'Liu Z, Brin KP, Yin FC. Estimation of total arterial compliance: an improved method and evaluation of current methods. Am J Physiol 1986;251:H588–H600.',
+  Spronck2015: 'Spronck B, Heusinkveld MHG, Vanmolkot FH, et al. Pressure-dependence of arterial stiffness: potential clinical implications. J Hypertens 2015;33:330–338.',
+  Butlin2017: 'Butlin M, Tan I, Shirbani F, Spronck B, Avolio A. Measurement of blood pressure dependency of carotid–femoral pulse wave velocity. Artery Res 2017;20:97–98 (abstract P145).',
+  McNally2024: 'McNally RJ, Boguslavskyi A, Malek R, et al. Influence of blood pressure reduction on pulse wave velocity in primary hypertension: a meta-analysis and comparison with an acute modulation of transmural pressure. Hypertension 2024;81:1619–1627.',
+  Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.'
 } as const;

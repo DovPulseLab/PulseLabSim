@@ -78,7 +78,7 @@ export function methodsHtml(): string {
 <div class="eq">Ep = D (Ps − Pd) / ΔD &nbsp;⇒&nbsp; PP = Ep·ΔD/D<span class="src">Eqs. 6–7 · N&amp;E 2001</span></div>
 <div class="eq">ΔP = c₀ ρ ΔQ / (π r²) = Zc · ΔQ<span class="src">Water-hammer · Eq. 2 N&amp;E; N&amp;S 2002</span></div>
 <div class="eq">Zc = ρ c₀ / A &nbsp;&nbsp; C ≈ V / (ρ c₀²) &nbsp;&nbsp; Ep ≈ 2ρc₀²<span class="src">Bramwell–Hill 1922</span></div>
-<div class="eq">c_operating = c₀ · (1 + ${MODEL.kAo} · (MAP − ${MODEL.mapRef})) &nbsp;(aorta); ${MODEL.kMus} for muscular arteries<span class="src">passive pressure dependence (v1)</span></div>
+<div class="eq">c_operating = c₀ · (1 + ${MODEL.kAo} · (MAP − ${MODEL.mapRef})) &nbsp;(aorta); ${MODEL.kMus} for muscular arteries<span class="src">passive pressure dependence (v1); slope checked against Butlin 2017, McNally 2024 (Validation §9)</span></div>
 
 <h3>3 · Wave reflection</h3>
 <div class="eq">PP = (Pi − Pd) + (Ps − Pi) &nbsp; = forward + reflected<span class="src">Eq. 12 · superposition</span></div>
@@ -182,10 +182,21 @@ ${studyDataHtml()}
 <li>The phenylephrine heart-rate reflex and the illustrative SV rise when a drug slows the heart apply in every mode.</li>
 </ul>
 
-<h3>14 · Assumptions &amp; limitations</h3>
+<h3>14 · Model review (v2.4)</h3>
+<p>An outside review raised six points. Each was tested against the model and published data:</p>
+<div class="table-wrap"><table class="vt"><tr><th>Point</th><th>Finding</th><th>Change</th></tr>
+<tr><td>At fixed SV and SVR, τ falls steeply with HR</td><td>Mostly real physiology: MAP rises with HR (flow source), and PWV rises with MAP, so compliance and R·C fall. The model's slope, 0.45 m/s per 10 mmHg MAP at PWV 7.5 m/s and 0.53 at 9.9 m/s, lies inside the measured 0.6 ± 0.3 (Butlin 2017) and 0.65, 95 % CI 0.46–0.83 (McNally 2024).</td><td>None to the law; data rows added (Validation §9).</td></tr>
+<tr><td>Fitted τ is not the Windkessel R·C</td><td>Confirmed. The fitted τ runs 1.2–2.6 × R·C across the study profiles. Γ scales the reflection at every frequency, including near 0 Hz, where the arterial tree acts as one Windkessel; with Γ below 0.5 this weakens the low-frequency load, late diastole flattens, and the zero-asymptote fit lengthens. The same cause makes late-systolic pressure sag at high HR with a small SV, so young profiles reach AIx −50 to −60 % with cardiac output held at 140–180 bpm (people rarely go below ≈ −30 %).</td><td>The τ card now shows τ = R·C; the fitted τ is labelled as a waveform measurement. A frequency-dependent reflection (full Windkessel near 0 Hz) fixed τ (fitted ≈ R·C within 5 %) but, with the present compliance and arm model, lowered cuff DBP to ≈ 55–57 mmHg at 65–80 y; it needs a joint recalibration and is not used yet.</td></tr>
+<tr><td>AIx flat from 60 to 100 bpm at fixed SV</td><td>Expected: shorter ejection lowers AIx, but the higher MAP stiffens the aorta and returns the echo earlier. In Pacing mode AIx falls 3.6 % per 10 bpm from 60 to 110 bpm, against ≈ 4 % measured (Wilkinson 2000; Validation §8).</td><td>None.</td></tr>
+<tr><td>P1/P2 are not found from the inflection point</td><td>True. The model uses the true arrival time of its reflected wave, which is what a device estimates from the inflection. A device-style inflection (d²P/dt²) was tested: it agreed within a few % at rest but jumped between beats at high HR, as device readings do.</td><td>None; the plot still marks the waveform inflection.</td></tr>
+<tr><td>Forward and backward waves share the mean pressure equally</td><td>True; a display convention, because one pressure trace cannot be split without flow.</td><td>Curves labelled "model component".</td></tr>
+<tr><td>Ejection time has no age term</td><td>Supported by data: in 1969 healthy adults LVET did not change with age in either sex (Alhakak 2023).</td><td>None; data row added.</td></tr>
+</table></div>
+
+<h3>15 · Assumptions &amp; limitations</h3>
 <ul>
   <li>Study profiles: pulse-pressure amplification (cuff − central SBP) is about right at 25–45 y but high at 65–80 y (≈ 13–15 mmHg vs means of 6–8 and 90th percentiles of 12–17 mmHg; Herbert 2014), because the model uses one fixed upper-limb transfer function. At 65–80 y cuff DBP is ≈ 60–63 mmHg and cuff SBP ≈ 128–132 mmHg.</li>
-  <li>Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote). With the asymptote fitted, τ is 0.19–0.22 s at 65–80 y, just under the invasive range (0.23–0.65 s).</li>
+  <li>The waveform's fitted τ runs 1.2–2.6 × R·C (§14), and AIx at high HR with a small SV is more negative than in people. Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote). With the asymptote fitted, τ is 0.19–0.22 s at 65–80 y, just under the invasive range (0.23–0.65 s).</li>
   <li>Single effective reflection site; the real tree has distributed reflections. Absolute Δtp values in youth are shorter than some invasive reports — trends, not absolute numbers, are the point.</li>
   <li>The heart is a flow source: stroke volume does not change with afterload, and changes with filling time only through the illustrative rule above for acute drugs. Moving the HR slider by hand, or a long-term v1 drug that slows HR, lowers MAP in proportion.</li>
   <li>MAP = CO × SVR, so aortic stiffness changes pulse pressure and central systolic pressure but not MAP or its percentage fall with a vasodilator such as propofol. The model has no mechanism by which a stiff aorta worsens hypotension.</li>
@@ -194,6 +205,6 @@ ${studyDataHtml()}
   <li>Reflection magnitude depends heavily on the separation method; compare directions, not absolute values.</li>
 </ul>
 
-<h3>15 · References</h3>
+<h3>16 · References</h3>
 <ol>${Object.values(CITATIONS).map(c => `<li>${c}</li>`).join('')}</ol>`;
 }

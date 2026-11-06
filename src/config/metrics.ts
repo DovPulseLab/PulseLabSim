@@ -51,13 +51,13 @@ export const METRICS: { g: string; items: Metric[] }[] = [
     { k: 'zcDyn', l: 'Characteristic impedance Zc', u: 'dyn·s·cm⁻⁵', f: 0, tip: 'Zc = ρc/A. Index of proximal aortic stiffness; sets the forward wave for a given flow.' },
     { k: 'ctot', l: 'Total arterial compliance', u: 'mL/mmHg', f: 2, tip: 'C ≈ V / ρc² (Bramwell–Hill). Governs diastolic decay.' },
     { k: 'svpp', l: 'SV / PP', u: 'mL/mmHg', f: 2, tip: 'Simple clinical surrogate of compliance.' },
-    { k: 'tau', l: 'Windkessel time constant RC', u: 's', f: 2, tip: 'τ = SVR × C, the decay time constant the two-element Windkessel predicts. Shorter τ = faster diastolic run-off = lower DBP.' },
+    { k: 'tau', l: 'Windkessel time constant τ = R·C', u: 's', f: 2, st: v => v < 0.75 ? 'warn' : v <= 2.0 ? 'ok' : 'warn', tip: 'τ = SVR × total compliance: the diastolic time constant set by the model\'s resistance and compliance. Shorter τ = faster diastolic run-off = lower DBP. Invasive τ (asymptote 0) ≈ 1.4 ± 0.3 s (Chemla 2017). This is the model\'s primary τ; the fitted τ below is measured from the waveform.' },
     { k: 'cAoOp', l: 'Aortic PWV (operating)', u: 'm/s', f: 1, tip: 'Intrinsic PWV adjusted passively for MAP (elastic arteries stiffen at higher distending pressure).' },
     { k: 'ep', l: 'Peterson modulus Ep', u: 'mmHg', f: 0, tip: 'Ep = D·ΔP/ΔD ≈ 2ρc² (Eq. 6, Nichols & Edwards).' }
   ]},
   { g: 'Diastolic decay', items: [
-    { k: 'tauFit', l: 'Diastolic decay time constant τ', u: 's', f: 2, st: v => v < 0.75 ? 'warn' : v <= 2.0 ? 'ok' : 'warn',
-      tip: 'How fast central pressure falls once the aortic valve closes. P(t) = P0·e^(−t/τ) is fitted to the last two-thirds of diastole (asymptote 0 mmHg). Larger τ = slower run-off. Invasive studies with the same assumption report ≈ 1.4 ± 0.3 s (Chemla 2017).' },
+    { k: 'tauFit', l: 'Decay τ fitted to the waveform (asymptote 0)', u: 's', f: 2,
+      tip: 'Measured from the waveform: P(t) = P0·e^(−t/τ) fitted to the last two-thirds of diastole (asymptote 0 mmHg), as done on catheter traces (≈ 1.4 ± 0.3 s; Chemla 2017). In this model it runs 1.2–2.6 × R·C, more when Γ is low, because the reflection setting also weakens the low-frequency (Windkessel) part of the load and late diastole flattens. Use τ = R·C for the time constant; use this value only alongside waveform-based measurements (Methods §14).' },
     { k: 'decayRate', l: 'Diastolic decay rate', u: 'mmHg/s', f: 0,
       tip: 'Mean fall of central pressure per second over the same window: (pressure at the start of the window − end-diastolic pressure) ÷ time. Rises with stiffer arteries, lower SVR and higher heart rate.' },
     { k: 'decayFall', l: 'Pressure fall over the fit window', u: 'mmHg', f: 1,
@@ -98,6 +98,6 @@ export const CARDS: Card[] = [
   { id: 'pwv', l: 'Aortic PWV', v: r => r.m.cAoOp.toFixed(1), d: (r, b) => r.m.cAoOp - b.m.cAoOp, u: 'm/s', f: 1, st: r => S(8, 10)(r.m.cAoOp), explain: 'cAoOp' },
   { id: 'dtp', l: 'Δtp', v: r => r.m.dtp.toFixed(0), d: (r, b) => r.m.dtp - b.m.dtp, u: 'ms', f: 0, explain: 'dtp' },
   { id: 'ew', l: 'ΔEw', v: r => (r.m.Ew / 1000).toFixed(1), d: (r, b) => (r.m.Ew - b.m.Ew) / 1000, u: '×10³', f: 1, st: r => S(5000, 12000)(r.m.Ew), explain: 'Ew' },
-  { id: 'decay', l: 'Diastolic τ', v: r => r.m.tauFit.toFixed(2), d: (r, b) => r.m.tauFit - b.m.tauFit, u: 's', f: 2, explain: 'tauFit' },
+  { id: 'decay', l: 'τ = R·C', v: r => r.m.tau.toFixed(2), d: (r, b) => r.m.tau - b.m.tau, u: 's', f: 2, explain: 'tau' },
   { id: 'sevr', l: 'SEVR', v: r => r.m.sevr.toFixed(0), d: (r, b) => r.m.sevr - b.m.sevr, u: '%', f: 0, st: r => SL(130, 100)(r.m.sevr), explain: 'sevr' }
 ];

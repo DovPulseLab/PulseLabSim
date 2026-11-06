@@ -67,6 +67,7 @@ export interface StudyReport {
   decay: StudyCheck[];
   cycle: StudyCheck[];
   response: StudyCheck[];
+  laws: StudyCheck[];
 }
 
 const within = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
@@ -244,5 +245,30 @@ export function runStudyValidation(): StudyReport {
       verdict: Math.abs(buffered(oldInd.m.map, oldPhys.m.map, oldRest.m.map) - fOld) < 0.08 ? 'pass' : 'near' }
   ];
 
-  return { profiles, heartRate, decay, cycle, response };
+  /* v2.4 model review: pressure → PWV, ejection time and age, τ vs R·C */
+  const pwvSlope = (p: Partial<Params>) => {    // m/s per 10 mmHg MAP, central difference via SVR
+    const b: Params = { ...DEFAULTS, ...p };
+    const lo = simulate({ ...b, radius: b.radius * 1.02 }).m, hi = simulate({ ...b, radius: b.radius / 1.02 }).m;
+    return { slope: 10 * (hi.cAoOp - lo.cAoOp) / (hi.map - lo.map), pwv: simulate(b).m.cAoOp, map: simulate(b).m.map };
+  };
+  const sDef = pwvSlope({}), sHtn = pwvSlope(PRESETS['Essential HTN (55 y)']);
+  const sYoung = pwvSlope(PRESETS['Healthy man (25 y)']), sOld = pwvSlope(PRESETS['Healthy man (80 y)']);
+  const etAge = (sex: number) => [25, 80].map(age => simulate({ ...DEFAULTS, ...PRESETS[sex ? 'Healthy woman (25 y)' : 'Healthy man (25 y)'], age, hr: 70 }).m.et);
+  const etM = etAge(0), etF = etAge(1);
+  const ratios = profiles.map(p => p.out.tauFit / p.out.rc);
+  const rLo = Math.min(...ratios), rHi = Math.max(...ratios);
+  const laws: StudyCheck[] = [
+    { kind: 'data', what: 'PWV change per 10 mmHg MAP, default adult (45 y)', model: `${sDef.slope.toFixed(2)} m/s (PWV ${sDef.pwv.toFixed(1)} m/s)`, reference: '0.6 ± 0.3 m/s (n = 88, 19–91 y)', source: 'Butlin 2017',
+      verdict: within(sDef.slope, 0.3, 0.9) ? 'pass' : within(sDef.slope, 0.2, 1.0) ? 'near' : 'fail' },
+    { kind: 'data', what: 'PWV change per 10 mmHg MAP, essential HTN (55 y)', model: `${sHtn.slope.toFixed(2)} m/s (PWV ${sHtn.pwv.toFixed(1)} m/s)`, reference: '0.65 (95 % CI 0.46–0.83) m/s, 83 trials, hypertensive', source: 'McNally 2024',
+      verdict: within(sHtn.slope, 0.46, 0.83) ? 'pass' : within(sHtn.slope, 0.36, 0.93) ? 'near' : 'fail' },
+    { kind: 'consistency', what: 'Stiffer arteries are more pressure-sensitive (25 y vs 80 y man)', model: `${sYoung.slope.toFixed(2)} → ${sOld.slope.toFixed(2)} m/s per 10 mmHg`, reference: 'slope rises with baseline PWV', source: 'Spronck 2015',
+      verdict: sOld.slope > sYoung.slope ? 'pass' : 'fail' },
+    { kind: 'data', what: 'Ejection time at 70 bpm does not change with age (25 vs 80 y)', model: `men ${etM[0].toFixed(0)} / ${etM[1].toFixed(0)} ms; women ${etF[0].toFixed(0)} / ${etF[1].toFixed(0)} ms`, reference: 'LVET did not change with age in either sex (n = 1969 healthy)', source: 'Alhakak 2023',
+      verdict: Math.abs(etM[0] - etM[1]) < 1 && Math.abs(etF[0] - etF[1]) < 1 ? 'pass' : 'fail' },
+    { kind: 'consistency', what: 'Known limitation: waveform-fitted τ vs τ = R·C, eight study profiles', model: `fitted / R·C = ${rLo.toFixed(2)}–${rHi.toFixed(2)}`, reference: '1.00 for a pure Windkessel', source: 'Liu 1986',
+      verdict: rHi <= 1.15 && rLo >= 0.85 ? 'pass' : rHi <= 1.3 && rLo >= 0.7 ? 'near' : 'fail' }
+  ];
+
+  return { profiles, heartRate, decay, cycle, response, laws };
 }

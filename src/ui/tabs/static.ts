@@ -98,8 +98,14 @@ export function renderValidation(): void {
   <div class="card prose" style="max-width:none">
     <h2>8 · Physiologic response modes (v2.3)</h2>
     <p>Each mode's coefficients are set from published human data (Methods §13); the <i>fitted to data</i> rows confirm they reproduce those numbers. The <i>prediction vs data</i> rows test what the model then does with them. ${dataScore(s5.response)}</p>
-    <p class="fine"><b>Where it misses, and why.</b> With pacing, the model's cuff SBP barely rises (Wilkinson 2000 found it rose) and its aortic PWV rises 0.6 m/s because PWV depends on pressure in the model (Wilkinson 2002 found no change). With exercise, stroke volume follows Pandey (+38 %) but MAP follows Wheatley, whose subjects' stroke volume rose only ≈ 4 %; the model therefore needs a larger fall in SVR than Wheatley measured, and its diastolic pressure falls (−4 to −14 mmHg) where Wheatley's stayed about level. Treat exercise diastolic pressure above ≈ 130 bpm with caution.</p>
+    <p class="fine"><b>Where it misses, and why.</b> With pacing, the model's cuff SBP barely rises (Wilkinson 2000 found it rose) and its aortic PWV rises 0.6 m/s because PWV depends on pressure in the model (Wilkinson 2002 found no change, although the size of the pressure dependence itself matches other data, Validation §9). With exercise, stroke volume follows Pandey (+38 %) but MAP follows Wheatley, whose subjects' stroke volume rose only ≈ 4 %; the model therefore needs a larger fall in SVR than Wheatley measured, and its diastolic pressure falls (−4 to −14 mmHg) where Wheatley's stayed about level. Treat exercise diastolic pressure above ≈ 130 bpm with caution.</p>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.response)}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>9 · Model review: pressure-dependent stiffness, ejection time and τ (v2.4)</h2>
+    <p>Checks added after an outside review of the model (Methods §14). ${dataScore(s5.laws)}</p>
+    <p class="fine">Pressure-dependent stiffness is why, at a fixed stroke volume and SVR, raising heart rate raises MAP, PWV and the decay rate together: the measured slopes say the model's coupling is, if anything, on the gentle side. The last row is a known limitation: the waveform's fitted τ runs longer than R·C (see Methods §14), so the τ card shows R·C.</p>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.laws)}</table></div>
   </div>`;
 }
 
