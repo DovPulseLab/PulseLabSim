@@ -93,6 +93,7 @@ export const CARDS: Card[] = [
   { id: 'hr', l: 'Heart rate', v: r => r.params.hr.toFixed(0), d: (r, b) => r.params.hr - b.params.hr, u: 'bpm', f: 0, explain: 'hr' },
   { id: 'pp', l: 'Central PP', v: r => r.m.PP.toFixed(0), d: (r, b) => r.m.PP - b.m.PP, u: 'mmHg', f: 0, st: r => S(45, 50)(r.m.PP), explain: 'PP' },
   { id: 'aix', l: 'AIx', v: r => r.m.AIx.toFixed(0), d: (r, b) => r.m.AIx - b.m.AIx, u: '%', f: 0, st: r => S(20, 30)(r.m.AIx), explain: 'AIx' },
+  { id: 'ap', l: 'Aug. pressure', v: r => r.m.AP.toFixed(0), d: (r, b) => r.m.AP - b.m.AP, u: 'mmHg', f: 0, explain: 'AP' },
   { id: 'ppa', l: 'PP amplif.', v: r => r.m.ppa.toFixed(2), d: (r, b) => r.m.ppa - b.m.ppa, u: '×', f: 2, st: r => SL(1.3, 1.1)(r.m.ppa), explain: 'ppa' },
   { id: 'pwv', l: 'Aortic PWV', v: r => r.m.cAoOp.toFixed(1), d: (r, b) => r.m.cAoOp - b.m.cAoOp, u: 'm/s', f: 1, st: r => S(8, 10)(r.m.cAoOp), explain: 'cAoOp' },
   { id: 'dtp', l: 'Δtp', v: r => r.m.dtp.toFixed(0), d: (r, b) => r.m.dtp - b.m.dtp, u: 'ms', f: 0, explain: 'dtp' },
