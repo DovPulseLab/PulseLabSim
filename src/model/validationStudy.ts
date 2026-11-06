@@ -68,6 +68,7 @@ export interface StudyReport {
   cycle: StudyCheck[];
   response: StudyCheck[];
   laws: StudyCheck[];
+  wilkinson: StudyCheck[];
 }
 
 const within = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
@@ -260,6 +261,29 @@ export function runStudyValidation(): StudyReport {
       verdict: Math.abs(buffered(oldInd.m.map, oldPhys.m.map, oldRest.m.map) - fOld) < 0.08 ? 'pass' : 'near' }
   ];
 
+  /* Wilkinson 2000, Table 2 (n = 22 pacemaker patients, mean age 63): change from 60 to 100 bpm.
+     Compared with the 65-y man in Pacing mode, measured the way the study measured (cuff, device). */
+  const W60 = { aix: 24.1, psbp: 135, pdbp: 80, csbp: 126, cdbp: 82, ppa: 1.28, p1: 30, ed: 323 };
+  const W100 = { aix: 8.8, psbp: 144, pdbp: 93, csbp: 129, cdbp: 96, ppa: 1.59, p1: 32, ed: 272 };
+  const wk = (hr: number) => {
+    const e = applyDrugEffects({ ...DEFAULTS, ...PRESETS['Healthy man (65 y)'], hr, resp: 1, hrRest: 70 }, [], 0);
+    const m = simulate(e.params).m; const p1 = m.AP > 0 ? m.Ps - m.AP : m.Ps;
+    return { aix: m.AIx, psbp: m.bSBP, pdbp: m.bDBP, csbp: m.devCSBP, cdbp: m.bDBP, ppa: m.ppa, p1: p1 - m.Pd, ed: m.et };
+  };
+  const w0 = wk(60), w1 = wk(100);
+  const wrow = (k: keyof typeof W60, what: string, unit: string, tol: number, dp = 0): StudyCheck => {
+    const dm = w1[k] - w0[k], dw = W100[k] - W60[k], err = Math.abs(dm - dw);
+    const sg = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(dp)}`;
+    return { kind: 'data', what: `Wilkinson benchmark, 60 → 100 bpm: change in ${what}`, model: `${sg(dm)} ${unit}`, reference: `${sg(dw)} ${unit} (${W60[k]} → ${W100[k]})`, source: 'Wilkinson 2000, Table 2',
+      verdict: err <= tol ? 'pass' : err <= 2 * tol ? 'near' : 'fail' };
+  };
+  const wilkinson: StudyCheck[] = [
+    wrow('cdbp', 'central DBP', 'mmHg', 3), wrow('pdbp', 'cuff DBP', 'mmHg', 3),
+    wrow('csbp', 'central SBP (device)', 'mmHg', 3), wrow('psbp', 'cuff SBP', 'mmHg', 3),
+    wrow('aix', 'AIx', '%', 3, 1), wrow('ppa', 'PP amplification', '×', 0.06, 2),
+    wrow('p1', 'forward-wave height P1 − DBP', 'mmHg', 3), wrow('ed', 'ejection duration', 'ms', 10)
+  ];
+
   /* v2.4 model review: pressure → PWV, ejection time and age, τ vs R·C */
   const pwvSlope = (p: Partial<Params>) => {    // m/s per 10 mmHg MAP, central difference via SVR
     const b: Params = { ...DEFAULTS, ...p };
@@ -285,5 +309,5 @@ export function runStudyValidation(): StudyReport {
       verdict: rHi <= 1.15 && rLo >= 0.85 ? 'pass' : rHi <= 1.3 && rLo >= 0.7 ? 'near' : 'fail' }
   ];
 
-  return { profiles, heartRate, decay, cycle, response, laws };
+  return { profiles, heartRate, decay, cycle, response, laws, wilkinson };
 }

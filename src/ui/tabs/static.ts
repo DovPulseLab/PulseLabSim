@@ -106,6 +106,12 @@ export function renderValidation(): void {
     <p>Checks added after an outside review of the model (Methods §14). ${dataScore(s5.laws)}</p>
     <p class="fine">Pressure-dependent stiffness is why, at a fixed stroke volume and SVR, raising heart rate raises MAP, PWV and the decay rate together: the measured slopes say the model's coupling is, if anything, on the gentle side. The last row is a known limitation: with diastole heading toward the zero-flow pressure, the waveform's free-asymptote fit comes out at about half of τ′ (Methods §15).</p>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.laws)}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>10 · Pacing benchmark: Wilkinson 2000, Table 2</h2>
+    <p>Changes from 60 to 100 bpm in 22 pacemaker patients (mean age 63), against the 65-year-old man in Pacing mode, measured as the study measured (cuff; cuff-calibrated device). Changes are compared rather than absolute values because the populations differ. ${dataScore(s5.wilkinson)}</p>
+    <p class="fine">Diastolic pressure matches. The misses share one pattern: in the patients the forward wave's height (P1 − DBP) stayed level and the brachial pulse followed it (PPP : (P1 − CDBP) ≈ 1.7–1.8 throughout), so only the reflected augmentation fell. In the model the forward wave shrinks with stroke volume, which lowers cuff and central SBP. Cardiac output was not measured in this study; if it rose in these patients, stroke volume fell less than Pacing mode assumes.</p>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.wilkinson)}</table></div>
   </div>`;
 }
 
