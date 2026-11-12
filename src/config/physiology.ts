@@ -184,7 +184,7 @@ export const CONTROLS: ControlGroup[] = [
   ]},
   { group: 'Arterioles (resistance)', color: 'var(--ink-3)', items: [
     { key: 'radius', label: 'Arteriolar radius', min: 75, max: 140, step: 0.5, unit: '%', f: 1,
-      tip: 'Poiseuille: R = 8μL/πr⁴, so SVR scales with radius⁻⁴. A 10 % increase in radius lowers SVR by ~32 %. Mainly moves mean pressure (MAP = CO × SVR).' }
+      tip: 'Poiseuille: R = 8μL/πr⁴, so SVR scales with radius⁻⁴. A 10 % increase in radius lowers SVR by ~32 %. Mainly moves mean pressure (MAP = CO × SVR). Changing sex or age resets it to the healthy value for that age (fitted, not measured: see Methods).' }
   ]},
   { group: 'Elastic arteries (aorta)', color: 'var(--fwd)', items: [
     { key: 'cAo', label: 'Aortic PWV (intrinsic)', min: 4, max: 16, step: 0.1, unit: 'm/s', f: 1,
@@ -196,7 +196,7 @@ export const CONTROLS: ControlGroup[] = [
     { key: 'cMus', label: 'Muscular-artery PWV', min: 4, max: 14, step: 0.1, unit: 'm/s', f: 1,
       tip: 'Smooth-muscle tone of the muscular conduits (femoral, popliteal, brachial). Vasodilators lower it, delaying the reflected wave (Nichols & Singh 2002). Also sets arm-wave speed (amplification).' },
     { key: 'gamma', label: 'Reflection coefficient Γ', min: 0.04, max: 0.9, step: 0.01, unit: '', f: 2,
-      tip: 'Fraction of the forward wave reflected at the effective reflection site (impedance mismatch). Vasodilators lower it; vasoconstrictors raise it.' },
+      tip: 'Fraction of the forward wave reflected at the effective reflection site (impedance mismatch). Vasodilators lower it; vasoconstrictors raise it. Changing sex or age resets it to the value fitted for that age (to Janner 2010 AIx, not a direct measurement of reflection).' },
     { key: 'lpScale', label: 'Reflection-site position', min: 0.7, max: 1.5, step: 0.01, unit: '×', f: 2,
       tip: 'Scales the effective distance to the major reflection site (Lp = 0.27 × height × factor). Values > 1 shift the site distally (as described in youth).' }
   ]},
@@ -208,9 +208,9 @@ export const CONTROLS: ControlGroup[] = [
   ]},
   { group: 'Patient', color: 'var(--brach)', items: [
     { key: 'sex', label: 'Sex', min: 0, max: 1, step: 1, unit: '', f: 0, kind: 'toggle', options: ['Male', 'Female'],
-      tip: 'Selects the sex-specific Weissler ejection-time line and the sex-specific reference equations used to calibrate aortic diameter and stroke volume. Changing it recalibrates aortic diameter, aortic PWV and stroke volume.' },
+      tip: 'Selects the sex-specific Weissler ejection-time line and the sex-specific reference data used to calibrate aortic diameter, stroke volume, arteriolar radius and Γ. Changing it recalibrates those inputs and aortic and muscular PWV.' },
     { key: 'age', label: 'Age', min: 18, max: 95, step: 1, unit: 'y', f: 0, model: false,
-      tip: 'Used only for calibration: changing age recalculates aortic diameter (Campens 2014), intrinsic aortic PWV (Reference Values for Arterial Stiffness Collaboration 2010) and stroke volume (Maceira 2006). It does not act on the waveform directly.' },
+      tip: 'Used only for calibration: changing age recalculates aortic diameter (Campens 2014), intrinsic aortic PWV (Reference Values for Arterial Stiffness Collaboration 2010), stroke volume (WASE 2021, Doppler), muscular-artery PWV (Avolio 1983 slope), and arteriolar radius and Γ (interpolated between the healthy study profiles, fitted to Herbert 2014 SBP and Janner 2010 AIx). It does not act on the waveform directly. Above about 75–80 y most of these are held flat beyond their data (extrapolated).' },
     { key: 'height', label: 'Height', min: 140, max: 205, step: 1, unit: 'cm', f: 0,
       tip: 'Body height sets the path length to the reflection site and the arm path. Shorter people have earlier reflections and a higher AIx (Nichols & Singh 2002). With weight it gives body surface area, so changing it also recalibrates aortic diameter and stroke volume.' },
     { key: 'weight', label: 'Weight', min: 35, max: 160, step: 1, unit: 'kg', f: 0, model: false,
@@ -227,25 +227,27 @@ export const ALL_CONTROLS: Control[] = CONTROLS.flatMap(g => g.items);
    subject's own values and the calibrated inputs update.
    Calibrated from sex, age, height and weight (src/model/calibrate.ts):
      aortic diameter (Campens 2014), intrinsic aortic PWV (RVASC 2010 normal values),
-     stroke volume (Maceira 2006 SV/BSA × 0.70).
+     stroke volume (WASE 2021 Doppler SV/BSA; v2.7, replacing Maceira 2006 × 0.70).
    Fitted, two numbers per profile, to healthy reference data:
      arteriolar radius (SVR) so central SBP = mean of the "normal" population of
        Herbert et al. 2014 for that sex and age decade;
      reflection coefficient Γ so AIx = Janner et al. 2010 reference equation
        (sex, age, HR, height).
    Everything else (DBP, PP, amplification, PWV at the operating MAP, diastolic decay,
-   SEVR) is a model prediction, checked on the Validation tab.
+   SEVR, SVR index, cardiac index) is a model prediction, checked on the Validation tab.
+   v2.7: the fitted radius and Γ also form the age curves in calibrate.ts (AGE_FIT), so
+   changing age on any patient sets them, interpolated between these profiles.
    Ejection duration starts at 300 ms (etScale = 300 / Weissler LVET at 70 bpm). */
 export interface StudyProfile { sex: 0 | 1; age: number; height: number; weight: number; diam: number; cAo: number; sv: number; cMus: number; radius: number; gamma: number; }
 export const STUDY_PROFILES: Record<string, StudyProfile> = {
-  'Healthy man (25 y)':   { sex: 0, age: 25, height: 177, weight: 75, diam: 2.70, cAo: 6.2,  sv: 75, cMus: 8.0, radius: 102.5, gamma: 0.14 },
-  'Healthy man (45 y)':   { sex: 0, age: 45, height: 176, weight: 77, diam: 3.00, cAo: 7.2,  sv: 73, cMus: 9.0, radius: 100.5, gamma: 0.23 },
-  'Healthy man (65 y)':   { sex: 0, age: 65, height: 174, weight: 75, diam: 3.20, cAo: 10.3, sv: 69, cMus: 10.0, radius: 101.5, gamma: 0.24 },
-  'Healthy man (80 y)':   { sex: 0, age: 80, height: 171, weight: 71, diam: 3.30, cAo: 10.9, sv: 65, cMus: 10.7, radius: 99,    gamma: 0.27 },
-  'Healthy woman (25 y)': { sex: 1, age: 25, height: 163, weight: 61, diam: 2.45, cAo: 6.2,  sv: 63, cMus: 8.0, radius: 100,   gamma: 0.27 },
-  'Healthy woman (45 y)': { sex: 1, age: 45, height: 162, weight: 62, diam: 2.75, cAo: 7.2,  sv: 59, cMus: 9.0, radius: 96.5,  gamma: 0.37 },
-  'Healthy woman (65 y)': { sex: 1, age: 65, height: 160, weight: 61, diam: 2.90, cAo: 10.3, sv: 55, cMus: 10.0, radius: 96,    gamma: 0.32 },
-  'Healthy woman (80 y)': { sex: 1, age: 80, height: 157, weight: 58, diam: 2.95, cAo: 10.9, sv: 52, cMus: 10.7, radius: 94,    gamma: 0.32 }
+  'Healthy man (25 y)':   { sex: 0, age: 25, height: 177, weight: 75, diam: 2.70, cAo: 6.2,  sv: 76, cMus: 8.0, radius: 103,   gamma: 0.14 },
+  'Healthy man (45 y)':   { sex: 0, age: 45, height: 176, weight: 77, diam: 3.00, cAo: 7.2,  sv: 76, cMus: 9.0, radius: 102,   gamma: 0.23 },
+  'Healthy man (65 y)':   { sex: 0, age: 65, height: 174, weight: 75, diam: 3.20, cAo: 10.3, sv: 74, cMus: 10.0, radius: 104,  gamma: 0.27 },
+  'Healthy man (80 y)':   { sex: 0, age: 80, height: 171, weight: 71, diam: 3.30, cAo: 10.9, sv: 72, cMus: 10.7, radius: 103,  gamma: 0.33 },
+  'Healthy woman (25 y)': { sex: 1, age: 25, height: 163, weight: 61, diam: 2.45, cAo: 6.2,  sv: 62, cMus: 8.0, radius: 99.5,  gamma: 0.26 },
+  'Healthy woman (45 y)': { sex: 1, age: 45, height: 162, weight: 62, diam: 2.75, cAo: 7.2,  sv: 63, cMus: 9.0, radius: 98.5,  gamma: 0.37 },
+  'Healthy woman (65 y)': { sex: 1, age: 65, height: 160, weight: 61, diam: 2.90, cAo: 10.3, sv: 62, cMus: 10.0, radius: 100.5, gamma: 0.39 },
+  'Healthy woman (80 y)': { sex: 1, age: 80, height: 157, weight: 58, diam: 2.95, cAo: 10.9, sv: 60, cMus: 10.7, radius: 99,    gamma: 0.37 }
 };
 /** Reference values for the study profiles. v2.5 fits SVR to cuff SBP (Herbert 2014 central
  *  SBP + amplification, i.e. their healthy cuff SBP) and Γ to AIx (Janner 2010); central SBP
@@ -473,5 +475,14 @@ export const CITATIONS = {
   Westerhof2007: 'Westerhof BE, Guelen I, Stok WJ, et al. Arterial pressure transfer characteristics: effects of travel time. Am J Physiol Heart Circ Physiol 2007;292:H800–H807.',
   Yokota2023: 'Yokota A, Kabutoya T, Hoshide S, Kario K. Comparison of heart rate and cardiac output of VVI pacemaker settings in patients with atrial fibrillation with bradycardia. J Arrhythm 2023;39:574–579.',
   Harrison1989: 'Harrison MR, Clifton GD, Sublett KL, DeMaria AN. Effect of heart rate on Doppler indexes of systolic function in humans. J Am Coll Cardiol 1989;14:929–935.',
-  Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.'
+  Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.',
+  Patel2021: 'Patel HN, Miyoshi T, Addetia K, et al. Normal values of cardiac output and stroke volume according to measurement technique, age, sex, and ethnicity: results of the World Alliance of Societies of Echocardiography study. J Am Soc Echocardiogr 2021;34:1077–1085.',
+  Redfield2005: 'Redfield MM, Jacobsen SJ, Borlaug BA, Rodeheffer RJ, Kass DA. Age- and gender-related ventricular-vascular stiffening: a community-based study. Circulation 2005;112:2254–2262.',
+  Phan2016: 'Phan TS, Li JK-J, Segers P, et al. Aging is associated with an earlier arrival of reflected waves without a distal shift in reflection sites. J Am Heart Assoc 2016;5:e003733.',
+  Mitchell2010: 'Mitchell GF, Wang N, Palmisano JN, et al. Hemodynamic correlates of blood pressure across the adult age spectrum: noninvasive evaluation in the Framingham Heart Study. Circulation 2010;122:1379–1386.',
+  Franklin1997: 'Franklin SS, Gustin W 4th, Wong ND, et al. Hemodynamic patterns of age-related changes in blood pressure: the Framingham Heart Study. Circulation 1997;96:308–315.',
+  Nichols1985: 'Nichols WW, O\'Rourke MF, Avolio AP, et al. Effects of age on ventricular-vascular coupling. Am J Cardiol 1985;55:1179–1184.',
+  Azizzadeh2024: 'Azizzadeh M, et al. Reference equations for pulse wave velocity, augmentation index, and forward and backward wave amplitudes. Sci Rep 2024;14:23151.',
+  Asklepios2021: 'Longitudinal changes of input impedance, pulse wave velocity, and wave reflection in a middle-aged population: the Asklepios study. Hypertension 2021; doi:10.1161/HYPERTENSIONAHA.120.16149.',
+  CUiiDARTE2021: 'Physiological age- and sex-related profiles for local (aortic) and regional (carotid-femoral, carotid-radial) pulse wave velocity and center-to-periphery stiffness gradient, with and without blood pressure adjustments: reference intervals and agreement between methods in healthy subjects (3–84 years). J Cardiovasc Dev Dis 2021;8:3.'
 } as const;

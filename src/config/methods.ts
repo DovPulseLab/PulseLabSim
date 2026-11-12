@@ -1,8 +1,8 @@
 /* Methods tab: equations (from v1), v2 engine and drug methods, illustrative drug values,
    differences from the v2 specification, limitations and references. */
 import { ALL_DRUGS, BAROREFLEX, CITATIONS, DRUG_EMAX, DRUG_KINETICS, ENGINE, MODEL, SV_HR_COUPLING, RESPONSE, baroFraction, exerciseMapSlope, STUDY_PROFILES, STUDY_TARGETS, PRESETS, DEFAULTS, PHYS, weisslerMs } from './physiology';
-import { CALIB, CAMPENS_AA, PWV_NORMAL, SVI_CMR, bsaDuBois } from '../model/calibrate';
-import { HERBERT_NORMAL, TAU_FREE_REF, TAU_REF } from '../model/validationStudy';
+import { AGE_FIT, CALIB, CAL_DATA_RANGE, CAMPENS_AA, PWV_NORMAL, SVI_CMR, SVI_DOPPLER, SVI_DOPPLER_SD, WASE_DOPPLER_CI, WASE_GROUPS, WASE_HR, bsaDuBois } from '../model/calibrate';
+import { HERBERT_NORMAL, PHAN_RWTT, REDFIELD_SVRI, TAU_FREE_REF, TAU_REF, ZC_REF } from '../model/validationStudy';
 
 /** Reference data behind the calibration and the study profiles, as tables. */
 function studyDataHtml(): string {
@@ -27,9 +27,15 @@ ${table(['Sex', 'a', 'b (log₁₀ age)', 'c (BSA)', 'SEE (log₁₀)'], [
 <h4>B · Carotid–femoral PWV, normal values (RVASC 2010, Table 4; n = 1 455, optimal/normal BP, no risk factors)</h4>
 ${table(['Age (y)', 'Mean (m/s)', 'Mean ± 2 SD (m/s)', 'Used at age'], PWV_NORMAL.map((r, i) => [decades[i], r.mean, `${r.lo}–${r.hi}`, r.age]))}
 <p class="fine">Interpolated linearly between decade midpoints and held flat below 25 y and above 75 y. Used as the intrinsic aortic PWV at MAP 93 mmHg; the operating value then moves with MAP.</p>
-<h4>C · Stroke volume index (Maceira 2006, Tables 2–3, SSFP CMR)</h4>
-${table(['Age (y)', 'Men SV/BSA (mL/m²)', 'Women SV/BSA (mL/m²)', `Model men (× ${CALIB.svScale})`, `Model women (× ${CALIB.svScale})`],
+<h4>C · Stroke volume index, Doppler LVOT (WASE, Patel 2021, Table 4; n = 1 450 healthy adults, 15 countries) — used since v2.7</h4>
+${table(['Age group (y)', 'Used at age', 'Men SV/BSA (mL/m²)', 'Women SV/BSA (mL/m²)', 'Men CI (L/min/m²)', 'Women CI (L/min/m²)', 'Men / women HR'],
+    WASE_GROUPS.map((g, i) => [g, SVI_DOPPLER.male[i][0], `${SVI_DOPPLER.male[i][1]} ± ${SVI_DOPPLER_SD.male[i]}`, `${SVI_DOPPLER.female[i][1]} ± ${SVI_DOPPLER_SD.female[i]}`,
+      WASE_DOPPLER_CI.male[i], WASE_DOPPLER_CI.female[i], `${WASE_HR.male[i]} / ${WASE_HR.female[i]}`]))}
+<p class="fine">Group means at the group midpoints (> 65 y placed at 72 y), interpolated between and held flat outside. In the same cohort 2D and 3D volumetric SVI fall with age while Doppler SVI does not; the study warns the methods are not interchangeable. Doppler (forward LVOT flow) matches what the model's heart delivers. The study published a correction; values are from the PMC version of Table 4.</p>
+<h4>C′ · Superseded: stroke volume index by CMR (Maceira 2006, Tables 2–3) × ${CALIB.svScale} (v2.1–v2.6)</h4>
+${table(['Age (y)', 'Men SV/BSA (mL/m²)', 'Women SV/BSA (mL/m²)', `Old model men (× ${CALIB.svScale})`, `Old model women (× ${CALIB.svScale})`],
     SVI_CMR.male.map((r, i) => [svDec[i], r[1], SVI_CMR.female[i][1], (r[1] * CALIB.svScale).toFixed(1), (SVI_CMR.female[i][1] * CALIB.svScale).toFixed(1)]))}
+<p class="fine">The ${CALIB.svScale} factor had no published source (it matched v1's default flow level) and imposed the CMR age decline on forward flow.</p>
 <h4>D · Central SBP and amplification, "normal" population (Herbert 2014; mean, 10th–90th percentile, mmHg)</h4>
 ${table(['Age (y)', 'Men cSBP', 'Women cSBP', 'Men cuff − central', 'Women cuff − central'],
     HERBERT_NORMAL.male.map((r, i) => { const f = HERBERT_NORMAL.female[i]; return [r.decade,
@@ -44,7 +50,11 @@ ${table(['Fit', 'τ (s)', 'P∞ (mmHg)', 'Source'], [
     ['Asymptote fitted', `${TAU_FREE_REF.mean} ± ${TAU_FREE_REF.sd}`, `${TAU_FREE_REF.pInf} ± ${TAU_FREE_REF.pInfSd}`, 'Yamakado 2018, n = 71 normal subjects, 20–80 y']])}
 <h4>G · Study-profile inputs</h4>
 ${table(['Profile', 'Height (cm)', 'Weight (kg)', 'BSA (m²)', 'Aorta (cm)', 'Aortic PWV (m/s)', 'SV (mL)', 'Arteriolar radius (SVR, dyn·s·cm⁻⁵)', 'Γ', 'LVET (ms)', 'HR', 'Herbert central SBP', 'Target AIx (%)', 'NHANES cuff DBP', 'Arm PWV (m/s)'], profiles)}
-<p class="fine">Aorta, PWV and SV are calibrated (tables A–C). Arteriolar radius and Γ are fitted to the last two columns (tables D–E). Other inputs keep their defaults: muscular-artery PWV ${DEFAULTS.cMus} m/s, reflection-site position 1.00, LVEDP ${DEFAULTS.lvedp} mmHg.</p>`;
+<p class="fine">Aorta, PWV, SV and arm PWV are calibrated (tables A–C, §9). Arteriolar radius and Γ are fitted to Herbert cuff SBP and Janner AIx (tables D–E) and form the age curves in table H. Other inputs keep their defaults: reflection-site position 1.00, LVEDP ${DEFAULTS.lvedp} mmHg.</p>
+<h4>H · Age curves for arteriolar radius and Γ (v2.7, fitted at the study profiles)</h4>
+${table(['Age (y)', 'Men radius (%)', 'Men Γ', 'Women radius (%)', 'Women Γ'],
+    AGE_FIT.ages.map((a, i) => [a, AGE_FIT.male.radius[i], AGE_FIT.male.gamma[i], AGE_FIT.female.radius[i], AGE_FIT.female.gamma[i]]))}
+<p class="fine">Interpolated linearly between these ages; held flat below 25 y and above 80 y. Fitted at HR 70 bpm and each profile's height, so a patient of different height or heart rate gets the same radius and Γ but not exactly the target SBP and AIx.</p>`;
 }
 
 const fx = (d: Record<string, number | undefined>) => {
@@ -132,13 +142,14 @@ export function methodsHtml(): string {
 </ul>
 
 <h3>9 · Patient calibration and healthy study profiles (v2.1)</h3>
-<p>Changing <b>sex, age, height or weight</b> recalculates four inputs from healthy reference data. The other inputs keep their values, and any slider can still be moved by hand afterwards.</p>
+<p>Changing <b>sex, age, height or weight</b> recalculates six inputs from healthy reference data: aortic diameter, aortic PWV, stroke volume, arm PWV and (v2.7) arteriolar radius and Γ. The other inputs keep their values, and any slider can still be moved by hand afterwards.</p>
 <div class="eq">BSA = 0.007184 × weight<sup>0.425</sup> × height<sup>0.725</sup><span class="src">Du Bois 1916</span></div>
 <div class="eq">log₁₀ D<sub>AA</sub>(mm) = a + b·log₁₀(age) + c·BSA &nbsp; men a 1.033, b 0.188, c 0.070; women 1.001, 0.177, 0.086<span class="src">Campens 2014, Table 2 (leading edge, end-diastole)</span></div>
 <div class="eq">aortic PWV = mean carotid–femoral PWV of the age decade, interpolated: 6.2 · 6.5 · 7.2 · 8.3 · 10.3 · 10.9 m/s (&lt;30 … ≥70 y)<span class="src">RVASC 2010, Table 4 normal values</span></div>
-<div class="eq">SV = SV/BSA (by sex and age decile) × 0.70 × BSA<span class="src">Maceira 2006, Tables 2–3</span></div>
+<div class="eq">SV = Doppler SV/BSA (by sex and age group) × BSA<span class="src">WASE, Patel 2021, Table 4 (v2.7; was Maceira 2006 × 0.70)</span></div>
+<div class="eq">arteriolar radius, Γ = fitted value at the study profiles for that sex, interpolated in age (table H)<span class="src">fitted to Herbert 2014 and Janner 2010 (v2.7)</span></div>
 <div class="eq">muscular (arm) PWV = 9.0 + 0.048 × (age − 45) m/s<span class="src">slope: Avolio 1983 (upper limb, 4.8·age + 998 cm/s); anchored at v1's 9.0 m/s at 45 y (v2.5)</span></div>
-<p>The 0.70 factor brings CMR stroke volume (which runs higher than Doppler or thermodilution stroke volume) to the model's flow level: v1's default 45-year-old man ejects 72 mL with BSA 1.90 m², 0.70 × Maceira's 54 mL/m². The age and sex differences come from the source unchanged. No sex term is used for PWV because the collaboration found the adjusted difference under 0.1 m/s. Age and weight act only through this calibration; sex also selects the women's Weissler line.</p>
+<p>Stroke volume comes from Doppler forward flow because the model's heart is a flow source into the aortic root. Until v2.6 it came from CMR chamber volumes (Maceira) × 0.70, a factor with no published source that also imported the volumetric age decline (§16). No sex term is used for PWV because the collaboration found the adjusted difference under 0.1 m/s (CUiiDARTE 2021 reports men 0.14–0.63 m/s higher from 23 to 80 y; not adopted). Age and weight act only through this calibration; sex also selects the women's Weissler line.</p>
 <p>The eight <b>healthy study profiles</b> (men and women at 25, 45, 65 and 80 y; heart rate 70 bpm; ejection 300 ms; typical healthy-weight height and weight) are calibrated as above, and then two inputs are fitted per profile: arteriolar radius (SVR) so that cuff SBP equals Herbert et al. 2014's healthy cuff SBP for that sex and decade (their central SBP + amplification), and reflection coefficient Γ so that AIx equals Janner et al. 2010's reference equation for that sex, age, heart rate and height. Everything else is a prediction compared with reference data on the Validation tab, including central SBP as a device would report it (Herbert) and cuff DBP (NHANES normotensive means, Wright 2011). v2.1–2.4 fitted SVR to Herbert's central SBP directly, which compared a device estimate with the model's true aortic pressure (§15).</p>
 
 <h4 style="margin-top:1.2em">Reference data</h4>
@@ -171,14 +182,14 @@ ${studyDataHtml()}
 <tr><td><b>Independent</b> (default)</td><td>Every input acts on its own. The heart is a flow source, so raising HR with SV unchanged raises cardiac output and MAP in proportion.</td><td>— (model definition)</td></tr>
 <tr><td><b>Pacing</b></td><td>CO × (1 + ${(RESPONSE.pacingCoPerBpm * 100).toFixed(3)} %·x); MAP × (1 + ${(RESPONSE.pacingMapPerBpm * 100).toFixed(2)} %·x); SV and SVR are set so both hold</td><td>Right-atrial pacing at rest 80 → 121 bpm: cardiac index 3.67 → 3.72 L/min/m² (Ross, Linhart &amp; Braunwald 1965). Paced 70 → 90 bpm: brachial MAP 95.95 → 102.02 mmHg, +6.3 % over that one 20-bpm step (Lazim et al. 2025); the model extends it linearly outside 70–90 bpm, which is an assumption. MAP also rose with pacing 60 → 110 bpm (Wilkinson et al. 2000), but did not change in Parker et al. 1971 or Wisheart et al. 1973, so the size of the MAP rise is uncertain. Near-constant cardiac output is supported by all three of Ross 1965, Parker 1971 (SV 74 → 46 mL, CO ≈ 5.7 L/min) and Wisheart 1973.</td></tr>
 <tr><td><b>Exercise</b> (x &gt; 0)</td><td>SV × ${(RESPONSE.exSv.sub / RESPONSE.exSv.rest).toFixed(2)} at x = ${RESPONSE.exSv.hrSub - RESPONSE.exSv.hrRest} (linear from rest), easing to × ${(RESPONSE.exSv.peak / RESPONSE.exSv.rest).toFixed(2)} at x = ${RESPONSE.exSv.hrPeak - RESPONSE.exSv.hrRest} and held beyond; MAP × (1 + ${(exerciseMapSlope * 100).toFixed(2)} %·x); SVR set to match</td><td>Upright cycling, invasive: stroke volume index ${RESPONSE.exSv.rest} → ${RESPONSE.exSv.sub} → ${RESPONSE.exSv.peak} mL/m² at HR ${RESPONSE.exSv.hrRest} → ${RESPONSE.exSv.hrSub} → ${RESPONSE.exSv.hrPeak} (Pandey et al. 2020, n = 104 healthy, 20–76 y). Intra-arterial MAP ${RESPONSE.exMap.rest} → ${RESPONSE.exMap.low} → ${RESPONSE.exMap.mod} mmHg at HR ${RESPONSE.exMap.hrRest} → ${RESPONSE.exMap.hrLow} → ${RESPONSE.exMap.hrMod} (Wheatley et al., n = 64, 18–32 y); slope = least-squares line through rest.</td></tr>
-<tr><td><b>Physiologic</b></td><td>The pacing rule for heart rate, plus baroreflex buffering of the MAP change caused by drugs: SVR × (MAP<sub>no drugs</sub> / MAP<sub>with drugs</sub>)<sup>f</sup>, f = 1 − 1/BRB</td><td>BRB = potentiation of the pressor response to phenylephrine infusion during vs before ganglionic blockade. Men: ${RESPONSE.baro.menBrb[0]} at 25 y and ${RESPONSE.baro.menBrb[2]} at 65 y (Jones et al. 2003), ${RESPONSE.baro.menBrb[1]} at 41 y (Christou et al. 2003); interpolated, held beyond. Women: 47 % less buffering than men at 27–28 y (Christou et al. 2005), applied as ${(RESPONSE.baro.womenExcessRatio * 100).toFixed(0)} % of the men's excess over 1 at every age. f: men ${(baroFraction(0, 25) * 100).toFixed(0)} % (25 y), ${(baroFraction(0, 45) * 100).toFixed(0)} % (45 y), ${(baroFraction(0, 65) * 100).toFixed(0)} % (≥ 65 y); women ${(baroFraction(1, 25) * 100).toFixed(0)} %, ${(baroFraction(1, 45) * 100).toFixed(0)} %, ${(baroFraction(1, 65) * 100).toFixed(0)} %.</td></tr>
+<tr><td><b>Physiologic</b></td><td>The pacing rule for heart rate, plus baroreflex buffering of the MAP change caused by drugs: SVR × (MAP<sub>no drugs</sub> / MAP<sub>with drugs</sub>)<sup>f</sup>, f = 1 − 1/BRB</td><td>BRB = potentiation of the pressor response to phenylephrine infusion during vs before ganglionic blockade. Men: ${RESPONSE.baro.menBrb[0]} at 25 y and ${RESPONSE.baro.menBrb[2]} at 65 y (Jones et al. 2003, incremental infusion, BRB<sub>slope</sub>; their bolus values were 5.1 and 2.1), ${RESPONSE.baro.menBrb[1]} at 41 y (Christou et al. 2003); interpolated, held beyond. Women: 47 % less buffering than men at 27–28 y (Christou et al. 2005, <b>bolus</b> protocol, 3.3 vs 6.3), applied as ${(RESPONSE.baro.womenExcessRatio * 100).toFixed(0)} % of the men's excess over 1 at every age. f: men ${(baroFraction(0, 25) * 100).toFixed(0)} % (25 y), ${(baroFraction(0, 45) * 100).toFixed(0)} % (45 y), ${(baroFraction(0, 65) * 100).toFixed(0)} % (≥ 65 y); women ${(baroFraction(1, 25) * 100).toFixed(0)} %, ${(baroFraction(1, 45) * 100).toFixed(0)} %, ${(baroFraction(1, 65) * 100).toFixed(0)} %.</td></tr>
 </table></div>
 <p><b>Assumptions and limits</b>, stated so you can judge them:</p>
 <ul>
 <li>The pacing studies used older patients with pacemakers or catheters (Lazim: 52 ± 10 y; Wilkinson 2000: 63 y; Ross: catheterised patients). The same relation is used at every age.</li>
 <li>The two exercise sources disagree on stroke volume: Pandey (invasive, radionuclide) found SVI +38 % by 50 W, Wheatley (acetylene rebreathing) only +4 %. The Exercise mode follows Pandey for SV and Wheatley for MAP, so its SVR fall (computed) lies between the two studies (Validation §8). Both are <i>upright</i> exercise from upright rest; from supine rest the SV rise is smaller.</li>
 <li>The heart-rate relations were measured up to ≈ 120 bpm (pacing) and ≈ 170–180 bpm (exercise); outside that they are extrapolated linearly.</li>
-<li>The baroreflex acts here only through SVR. In people it also changes heart rate, contractility and venous tone. BRB was measured on the systolic pressure response; it is applied to MAP. The women's values at ages other than 27–28 y are an extrapolation of the sex ratio.</li>
+<li>The baroreflex acts here only through SVR. In people it also changes heart rate, contractility and venous tone. BRB was measured on the systolic pressure response; it is applied to MAP. The women's values at ages other than 27–28 y are an extrapolation of the sex ratio. That ratio comes from the bolus protocol and is applied to the men's infusion curve, which assumes the sex difference is the same in both protocols; Christou 2005 compared young women with young men only, so it is not a female age trajectory.</li>
 <li>Physiologic mode buffers drug effects, not the heart-rate change itself, because the pacing data were measured in people with intact reflexes and so already include them.</li>
 <li>The phenylephrine heart-rate reflex and the illustrative SV rise when a drug slows the heart apply in every mode.</li>
 </ul>
@@ -208,9 +219,34 @@ ${studyDataHtml()}
 <p><b>Wilkinson 2000 benchmark (Validation §10).</b> Diastolic rises match. Central and cuff SBP fall in the model but rose slightly in the patients, whose forward wave held its height. Wilkinson's patients had pacemakers and their cardiac output was not measured; in bradycardic pacemaker patients cardiac output rises with pacing rate (+35 % from 60 to 90 bpm, Yokota 2023), while in normal hearts it stays level (Ross 1965; Parker 1971). Given Yokota's stroke volumes, the model reproduces Wilkinson's central SBP (+2 vs +3 mmHg) and forward-wave height (+1 vs +2 mmHg). Pacing mode keeps the constant output of normal hearts, which fits the healthy profiles.</p>
 <p><b>Still missing (v2.6):</b> the fitted free-asymptote τ is 0.43–0.54 × τ′ and 0.14–0.16 s at 65–80 y (Yamakado 0.44 ± 0.11 s); with pacing, AIx falls 2.1–2.7 % per 10 bpm against ≈ 4 % measured; during exercise brachial DBP falls (−8 / −21 mmHg) where Wheatley's stayed level; and with cardiac output held at 140–180 bpm the 25-year-old profile reaches AIx −57 to −67 % (people rarely go below ≈ −30 %). Against Wilkinson 2000's paced patients (Validation §10) the diastolic rise matches, but the model's forward wave shrinks with stroke volume while theirs stayed level, so cuff SBP falls where theirs rose and AIx falls 9 rather than 15 points from 60 to 100 bpm. v2.4 attributed that last miss to the reflection law, but the v2.5 reflection did not change it, so its cause lies elsewhere (most likely the fixed ejection-flow shape at very short ejection times).</p>
 
-<h3>16 · Assumptions &amp; limitations</h3>
+<h3>16 · Age evidence and data provenance (v2.7)</h3>
+<p>v2.7 re-examined every age-dependent input against a compiled evidence review of healthy adults aged 20–90 (Cardiovascular Aging Evidence Report, Nov 2026). Three things changed: stroke volume now follows Doppler data (table C), the eight profiles were refitted, and arteriolar radius and Γ now follow age (table H), so the age slider gives a calibrated healthy patient at any age. The evidence is mixed on several trends, so each Validation §11 row names the study the model is held to.</p>
+<div class="table-wrap"><table class="vt"><tr><th>Input</th><th>Source (method)</th><th>Health definition</th><th>Sex-specific</th><th>Ages with data</th><th>What the model stores</th></tr>
+<tr><td>Aortic diameter</td><td>Campens 2014 (2D echo, leading edge, end-diastole)</td><td>healthy, n = 849</td><td>yes</td><td>${CAL_DATA_RANGE.diam.join('–')} y</td><td>regression; extrapolated above 85 y; coefficients not yet audited against the full text</td></tr>
+<tr><td>Aortic PWV</td><td>RVASC 2010 (carotid–femoral, standardized)</td><td>strict normal, n = 1 455</td><td>no (pooled)</td><td>decades &lt; 30 … ≥ 70 (sample to 85)</td><td>observed decade means at midpoints, interpolated; flat above ${CAL_DATA_RANGE.cAo[1]} y (≥ 70 pooled, so 80–90 y is extrapolated)</td></tr>
+<tr><td>Stroke volume</td><td>WASE 2021 (Doppler LVOT)</td><td>healthy, n = 1 450</td><td>yes</td><td>18–40, 41–65, &gt; 65 y</td><td>observed group means, interpolated; flat outside ${CAL_DATA_RANGE.sv.join('–')} y</td></tr>
+<tr><td>Arm PWV</td><td>Avolio 1983 slope (upper limb), v1 anchor</td><td>community</td><td>no</td><td>adults</td><td>regression slope with an unsourced anchor; CUiiDARTE 2021 carotid–radial slopes are 0.0615 (men) and 0.0476 m/s per year (women), a different path</td></tr>
+<tr><td>Arteriolar radius (SVR)</td><td>fitted: Herbert 2014 cuff SBP</td><td>strict normal</td><td>yes</td><td>25–80 y profiles</td><td>fitted, interpolated; checked against Redfield 2005 SVRI (regression, flat with age)</td></tr>
+<tr><td>Γ</td><td>fitted: Janner 2010 AIx</td><td>low risk</td><td>yes</td><td>25–80 y profiles</td><td>fitted, interpolated. AIx also depends on ejection, HR and resistance, so Γ fitted to AIx can absorb other errors; it is not a measured reflection coefficient</td></tr>
+<tr><td>Reflection distance</td><td>0.27 × height (v1)</td><td>—</td><td>—</td><td>all</td><td>fixed with age; Phan 2016 found no increase in effective reflecting distance with age</td></tr>
+<tr><td>LVET</td><td>Weissler 1968 (HR, sex); Alhakak 2023</td><td>healthy, n = 1 969</td><td>yes</td><td>20 – &gt; 65 y</td><td>HR and sex only, no age term (Alhakak: no age change). The study profiles use 300 ms for both sexes by design</td></tr>
+<tr><td>Baroreflex buffering</td><td>Jones 2003 (infusion), Christou 2003/2005 (bolus ratio)</td><td>healthy</td><td>men measured; women by ratio</td><td>25–65 y men</td><td>interpolated; flat outside; protocols mixed (§13)</td></tr>
+</table></div>
+<h4>Where the evidence disagrees, and the choice made</h4>
 <ul>
-  <li>Study profiles: amplification and cuff values are now compared like-for-like (cuff with cuff, device with device); the remaining misses are listed in §15.</li>
+<li><b>SVR with age.</b> Invasive data found +37 % from 20 to 60 y (Nichols 1985); Redfield 2005's healthier subgroup (n = 623, ≥ 45 y) found no age association in SVRI (men ≈ ${REDFIELD_SVRI.male[0][1]}, women ≈ ${REDFIELD_SVRI.female[0][1]} dyn·s·cm⁻⁵·m² at 55 y); Asklepios found resistance rising cross-sectionally but falling longitudinally. With Doppler stroke volume the refitted profiles give SVRI about 2 350–2 620, close to flat with age.</li>
+<li><b>Reflection magnitude.</b> Cross-sectionally the backward wave rises with age (Azizzadeh 2024); in Framingham reflection fell after 50 (Mitchell 2010); longitudinally it fell (Asklepios). The model's Γ rises with age because it is fitted to AIx; treat it as a cross-sectional calibration, not a within-person law.</li>
+<li><b>Reflection timing.</b> Reflected-wave transit time falls ${-PHAN_RWTT.wsa}–${-PHAN_RWTT.tl} ms per decade by pressure–flow analysis (Phan 2016) without a distal shift of the reflection site; inflection-point timing changes little and is not a transit time. The model's fixed reflection distance reproduces the pressure–flow trend.</li>
+<li><b>Characteristic impedance.</b> Healthy values differ more by method than by age: median ${ZC_REF.phanMedian} dyn·s·cm⁻⁵ (MRI pressure–flow, Phan 2016) vs ${ZC_REF.mitchellMean} ± ${ZC_REF.mitchellSd} (Framingham). The model's ρc/A (≈ 105–160) sits between them; Zc and PWV need not share an age trajectory because the aorta widens.</li>
+<li><b>Stroke volume and cardiac index.</b> Doppler SVI and CI are flat with age (WASE); 3D, 2D and CMR volumes fall. The model follows Doppler.</li>
+<li><b>MAP after midlife.</b> MAP rises in early adulthood and then plateaus (Franklin 1997). In the refitted 65- and 80-year-old profiles MAP is 8–9 mmHg below the 45-year-old's: with flat stroke volume they reach the target SBP with a pulse pressure about 5 mmHg too wide, so cuff DBP falls 4–7 mmHg below NHANES. Refitting with the RVASC <i>median</i> PWV (9.7 m/s at 60–69 y, 10.6 at ≥ 70) narrows but does not close this gap. This is the main open limitation of v2.7 (Validation §11).</li>
+<li><b>Ages above 80.</b> No source gives sex-specific healthy norms at 85–90 y. Above about 75–80 y the calibration holds every input flat; the rail lists which inputs are extrapolated at the chosen age.</li>
+</ul>
+<p class="fine">Not adopted, pending full-text checks: Herbert 2014's Table 2 values and Campens 2014's coefficients as coded; Azizzadeh 2024 forward/backward-wave equations (tables not retrieved); Redfield 2005 SVRI values (taken from the evidence report's transcription of the age regression).</p>
+
+<h3>17 · Assumptions &amp; limitations</h3>
+<ul>
+  <li>Study profiles: amplification and cuff values are now compared like-for-like (cuff with cuff, device with device); the remaining misses are listed in §15 and, for the age trends, §16.</li>
   <li>Diastolic decay: see §15 for the remaining misses. Zero-asymptote τ is longer than invasive values in the young profiles (2.0–2.7 s vs 1.37 ± 0.31 s). The comparison cohort was older catheterised patients, and the model's late diastole flattens toward ≈ 50–65 mmHg (see the fitted asymptote). With the asymptote fitted, τ is 0.19–0.22 s at 65–80 y, just under the invasive range (0.23–0.65 s).</li>
   <li>Single effective reflection site; the real tree has distributed reflections. Absolute Δtp values in youth are shorter than some invasive reports — trends, not absolute numbers, are the point.</li>
   <li>The heart is a flow source: stroke volume does not change with afterload, and changes with filling time only through the illustrative rule above for acute drugs. Moving the HR slider by hand, or a long-term v1 drug that slows HR, lowers MAP in proportion.</li>
@@ -220,6 +256,6 @@ ${studyDataHtml()}
   <li>Reflection magnitude depends heavily on the separation method; compare directions, not absolute values.</li>
 </ul>
 
-<h3>17 · References</h3>
+<h3>18 · References</h3>
 <ol>${Object.values(CITATIONS).map(c => `<li>${c}</li>`).join('')}</ol>`;
 }

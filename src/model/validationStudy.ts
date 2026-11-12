@@ -8,7 +8,7 @@
    model was not fitted to.
    ===================================================================== */
 import { DEFAULTS, LAWS, MODEL, PRESETS, RESPONSE, STUDY_PROFILES, STUDY_TARGETS, baroFraction, weisslerMs, type Params } from '../config/physiology';
-import { aortaDiameter, bsaDuBois, pwvNormal } from './calibrate';
+import { SVI_DOPPLER_SD, WASE_DOPPLER_CI, WASE_GROUPS, aortaDiameter, bsaDuBois, interp, pwvNormal, svIndex } from './calibrate';
 import { diastolicDecay } from './indices';
 import { buildCycle } from './cycle';
 import { applyDrugEffects, type DrugEvent } from '../engine/kinetics';
@@ -53,6 +53,21 @@ export const TAU_REF = { mean: 1.372, sd: 0.308 } as const;
 /** Yamakado 2018: free-asymptote fit in 71 normal subjects aged 20–80 y: τ 436 ± 105 ms, P∞ 58.5 ± 8.1 mmHg. */
 export const TAU_FREE_REF = { mean: 0.436, sd: 0.105, pInf: 58.5, pInfSd: 8.1 } as const;
 
+/* ---- v2.7 age evidence (Cardiovascular Aging Evidence Report, Nov 2026) ---- */
+/** Redfield 2005, healthier subgroup (n = 623, ≥ 45 y, Doppler SV): SVRI (dyn·s·cm⁻⁵·m²) from the
+ *  age regression at 55 and 75 y; no significant age association (men P = 0.82, women P = 0.50).
+ *  Regression estimates, not decade means; SVRI = 80 × MAP / CI (no RAP term, as in the model). */
+export const REDFIELD_SVRI = { male: [[55, 2479], [75, 2497]], female: [[55, 2339], [75, 2301]] } as const;
+/** Phan 2016 (JAHA; carotid tonometry + phase-contrast MRI, n = 48 general sample): reflected-wave
+ *  transit time falls with age by wave separation −15.0 and tube-load −15.8 ms/decade (older
+ *  clinical sample −9.07 and −11.8); no increase in effective reflecting distance. */
+export const PHAN_RWTT = { wsa: -15.0, tl: -15.8, wsaClin: -9.07, tlClin: -11.8 } as const;
+/** Characteristic impedance in healthy adults depends strongly on method (dyn·s·cm⁻⁵):
+ *  Phan 2016 general sample median 81 (IQR 66.6–93.1, pressure–flow, MRI);
+ *  Mitchell 2010 Framingham healthy reference (< 50 y) 172 ± 45 (95th percentile 259). */
+export const ZC_REF = { phanMedian: 81.0, phanIqr: [66.6, 93.1], mitchellMean: 172, mitchellSd: 45, mitchell95: 259 } as const;
+const waseIdx = (age: number) => age <= 40 ? 0 : age <= 65 ? 1 : 2;
+
 /** What a row tests:
  *  fitted       the model or rule was set from this data; the row shows it reproduces it
  *  data         a prediction compared with published data the model was not set from
@@ -69,6 +84,8 @@ export interface StudyReport {
   response: StudyCheck[];
   laws: StudyCheck[];
   wilkinson: StudyCheck[];
+  /** v2.7: age trends across the study profiles against the aging evidence */
+  aging: StudyCheck[];
 }
 
 const within = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
@@ -93,6 +110,13 @@ export function runStudyValidation(): StudyReport {
         verdict: Math.abs(m.devCSBP - tgt.cSBP) <= 4 ? 'pass' : Math.abs(m.devCSBP - tgt.cSBP) <= 8 ? 'near' : 'fail' },
       { kind: 'data', what: 'Cuff DBP', model: `${m.bDBP.toFixed(0)} mmHg`, reference: `${tgt.cuffDBP} mmHg (normotensive mean, ${sp.age < 40 ? '18–39' : sp.age < 60 ? '40–59' : '≥ 60'} y)`, source: 'Wright 2011 (NHANES)',
         verdict: Math.abs(m.bDBP - tgt.cuffDBP!) <= 4 ? 'pass' : Math.abs(m.bDBP - tgt.cuffDBP!) <= 8 ? 'near' : 'fail' },
+      { kind: 'fitted', what: 'Stroke-volume index', model: `${(p.sv / bsa).toFixed(1)} mL/m²`, reference: `${svIndex(sp.sex, sp.age).toFixed(1)} mL/m² (WASE Doppler, interpolated between group means; ${WASE_GROUPS[waseIdx(sp.age)]} y SD ${(sp.sex ? SVI_DOPPLER_SD.female : SVI_DOPPLER_SD.male)[waseIdx(sp.age)]})`, source: 'Patel 2021 (WASE)', fitted: true,
+        verdict: Math.abs(p.sv / bsa - svIndex(sp.sex, sp.age)) <= 1 ? 'pass' : 'fail' },
+      { kind: 'data', what: 'Cardiac index (HR 70)', model: `${(m.co / bsa).toFixed(2)} L/min/m²`, reference: `${(sp.sex ? WASE_DOPPLER_CI.female : WASE_DOPPLER_CI.male)[waseIdx(sp.age)]} ± 0.6 L/min/m² (Doppler, ${WASE_GROUPS[waseIdx(sp.age)]} y; their HR ≈ 65–70)`, source: 'Patel 2021 (WASE)',
+        verdict: band(m.co / bsa, (sp.sex ? WASE_DOPPLER_CI.female : WASE_DOPPLER_CI.male)[waseIdx(sp.age)] - 0.6, (sp.sex ? WASE_DOPPLER_CI.female : WASE_DOPPLER_CI.male)[waseIdx(sp.age)] + 0.6, 0.3) },
+      ...(sp.age >= 45 ? [(() => { const ref = interp(sp.sex ? REDFIELD_SVRI.female : REDFIELD_SVRI.male, sp.age), svri = m.svrDyn * bsa, dev = svri / ref - 1;
+        return { kind: 'data' as CheckKind, what: 'SVR index', model: `${svri.toFixed(0)} dyn·s·cm⁻⁵·m²`, reference: `${ref.toFixed(0)} (regression estimate; flat with age)`, source: 'Redfield 2005',
+          verdict: (Math.abs(dev) <= 0.15 ? 'pass' : Math.abs(dev) <= 0.25 ? 'near' : 'fail') as Verdict }; })()] : []),
       { kind: 'consistency', what: 'Ascending-aorta diameter', model: `${p.diam.toFixed(2)} cm`, reference: `${d.lo.toFixed(2)}–${d.hi.toFixed(2)} cm`, source: 'Campens 2014',
         verdict: band(p.diam, d.lo, d.hi, 0.1) },
       { what: 'Aortic PWV at the operating MAP', model: `${m.cAoOp.toFixed(1)} m/s`, reference: `${pwv.lo.toFixed(1)}–${pwv.hi.toFixed(1)} m/s`, source: 'RVASC 2010',
@@ -309,5 +333,32 @@ export function runStudyValidation(): StudyReport {
       verdict: rHi <= 1.15 && rLo >= 0.85 ? 'pass' : rHi <= 1.3 && rLo >= 0.7 ? 'near' : 'fail' }
   ];
 
-  return { profiles, heartRate, decay, cycle, response, laws, wilkinson };
+  /* v2.7 age evidence: trends across the study profiles */
+  const prof = (nm: string) => { const sp = STUDY_PROFILES[nm]; const m = simulate({ ...DEFAULTS, ...PRESETS[nm] }).m; return { m, bsa: bsaDuBois(sp.height, sp.weight) }; };
+  const sexes = [['men', 'Healthy man'], ['women', 'Healthy woman']] as const;
+  const atAge = (pre: string, age: number) => prof(`${pre} (${age} y)`);
+  const aging: StudyCheck[] = [];
+  for (const [lab, pre] of sexes) {
+    const slope = (atAge(pre, 65).m.dtp - atAge(pre, 25).m.dtp) / 4;   // m.dtp is in ms
+    aging.push({ kind: 'data', what: `Reflected-wave round trip, change per decade 25 → 65 y (${lab})`, model: `${slope.toFixed(1)} ms/decade (${atAge(pre, 25).m.dtp.toFixed(0)} → ${atAge(pre, 65).m.dtp.toFixed(0)} ms)`,
+      reference: `${PHAN_RWTT.wsa} (wave separation) / ${PHAN_RWTT.tl} (tube-load) ms/decade; older clinical ${PHAN_RWTT.wsaClin} / ${PHAN_RWTT.tlClin}; reflecting distance did not increase`, source: 'Phan 2016',
+      verdict: within(slope, -16.5, -8.5) ? 'pass' : within(slope, -20, -5) ? 'near' : 'fail' });
+  }
+  for (const [lab, pre] of sexes) {
+    const s45 = atAge(pre, 45), s80 = atAge(pre, 80), d = (s80.m.svrDyn * s80.bsa) / (s45.m.svrDyn * s45.bsa) - 1;
+    aging.push({ kind: 'data', what: `SVR index, 45 → 80 y (${lab})`, model: `${(d * 100).toFixed(0)} %`, reference: 'no significant age association in healthy adults ≥ 45 y (men P = 0.82, women P = 0.50)', source: 'Redfield 2005',
+      verdict: Math.abs(d) <= 0.10 ? 'pass' : Math.abs(d) <= 0.20 ? 'near' : 'fail' });
+  }
+  for (const [lab, pre] of sexes) {
+    const m45 = atAge(pre, 45).m.map, drop = Math.min(atAge(pre, 65).m.map, atAge(pre, 80).m.map) - m45;
+    aging.push({ kind: 'data', what: `MAP after midlife: lowest of 65 / 80 y minus 45 y (${lab})`, model: `${drop.toFixed(1)} mmHg (${m45.toFixed(0)} → ${atAge(pre, 65).m.map.toFixed(0)} → ${atAge(pre, 80).m.map.toFixed(0)})`,
+      reference: 'MAP rises in early adulthood, then plateaus; a fall after 60 is not established', source: 'Franklin 1997; Mitchell 2010',
+      verdict: drop >= -3 ? 'pass' : drop >= -6 ? 'near' : 'fail' });
+  }
+  const zcYoung = ['Healthy man (25 y)', 'Healthy man (45 y)', 'Healthy woman (25 y)', 'Healthy woman (45 y)'].map(nm => prof(nm).m.zcDyn);
+  aging.push({ kind: 'typical', what: 'Characteristic impedance Zc, 25–45 y profiles', model: `${Math.min(...zcYoung).toFixed(0)}–${Math.max(...zcYoung).toFixed(0)} dyn·s·cm⁻⁵ (ρc/A)`,
+    reference: `${ZC_REF.phanIqr[0]}–${ZC_REF.mitchell95} across methods: median ${ZC_REF.phanMedian} (IQR ${ZC_REF.phanIqr[0]}–${ZC_REF.phanIqr[1]}; MRI pressure–flow) to ${ZC_REF.mitchellMean} ± ${ZC_REF.mitchellSd} (Framingham)`, source: 'Phan 2016; Mitchell 2010',
+    verdict: zcYoung.every(z => within(z, ZC_REF.phanIqr[0], ZC_REF.mitchell95)) ? 'pass' : 'near' });
+
+  return { profiles, heartRate, decay, cycle, response, laws, wilkinson, aging };
 }
