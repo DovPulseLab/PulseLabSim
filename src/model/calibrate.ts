@@ -12,8 +12,13 @@
      mean carotid–femoral PWV by age decade. Sex effect < 0.1 m/s after adjustment, so
      no sex term.
    - Stroke volume: Maceira AM, et al. J Cardiovasc Magn Reson 2006;8:417–426,
-     Tables 2–3, SSFP CMR, SV/BSA by age decile, men and women. CMR SV runs higher than
-     Doppler SV; see Methods.
+     Tables 2–3, SSFP CMR, SV/BSA by age decile, men and women, × CALIB.svScale (0.70).
+     CMR SV runs higher than Doppler SV; see Methods. The 0.70 factor has no published
+     source (it matches v1's default flow level).
+     Comparison only (v2.7): Patel HN, et al. (WASE). J Am Soc Echocardiogr 2021;34:1077–1085,
+     Table 4, Doppler LVOT SVI by sex and age group. Using it for calibration was tried in
+     v2.7 and reverted: with Doppler SVI flat with age, the older profiles' MAP fell 8–9 mmHg
+     below the 45-year-old's (Methods §16).
    - Muscular (arm) PWV: Avolio AP, et al. Circulation 1983;68:50–58 — upper-limb PWV rises
      0.048 m/s per year of age (4.8·age + 998 cm/s). The slope is used, anchored at the v1
      value of 9.0 m/s for a 45-year-old, because absolute arm PWV depends on the method. */
@@ -48,6 +53,19 @@ export const PWV_NORMAL: { age: number; mean: number; lo: number; hi: number }[]
   { age: 75, mean: 10.9, lo: 5.5, hi: 16.3 }   // ≥ 70 (held flat beyond 75)
 ];
 
+/** WASE 2021 Table 4, Doppler BSA-indexed SV (mL/m², mean ± SD), placed at the age-group
+ *  midpoints 29, 53 and 72 y (> 65 y group: midpoint of 65–80), flat outside. Used for
+ *  comparison (Validation, Methods), not for calibration. */
+export const SVI_DOPPLER = {
+  male:   [[29, 39.7], [53, 39.0], [72, 39.3]],
+  female: [[29, 37.4], [53, 38.1], [72, 38.3]]
+} as const;
+export const SVI_DOPPLER_SD = { male: [7.3, 8.2, 8.6], female: [7.4, 8.1, 9.2] } as const;
+/** WASE 2021 Table 4, Doppler cardiac index (L/min/m²) and heart rate in the same groups. */
+export const WASE_DOPPLER_CI = { male: [2.6, 2.6, 2.6], female: [2.6, 2.6, 2.7] } as const;
+export const WASE_HR = { male: [66.4, 66.4, 64.7], female: [70.3, 68.4, 69.0] } as const;
+export const WASE_GROUPS = ['18–40', '41–65', '> 65'] as const;
+
 /** Maceira 2006 Tables 2–3: SV/BSA (mL/m²) by age decile, at the decile midpoint. */
 export const SVI_CMR = {
   male:   [[25, 56], [35, 55], [45, 54], [55, 53], [65, 52], [75, 51]],
@@ -72,15 +90,19 @@ export const pwvNormal = (age: number) => ({
   hi: interp(PWV_NORMAL.map(r => [r.age, r.hi] as const), age)
 });
 
-/** CMR stroke-volume index scaled to Doppler/flow level (see CALIB.svScale). */
+/** CMR stroke-volume index scaled to Doppler/flow level (see CALIB.svScale). Used for calibration. */
 export const svIndex = (sex: number, age: number): number =>
   interp(sex === 1 ? SVI_CMR.female : SVI_CMR.male, age) * CALIB.svScale;
+
+/** WASE Doppler SVI (mL/m²), for comparison only. */
+export const svIndexDoppler = (sex: number, age: number): number =>
+  interp(sex === 1 ? SVI_DOPPLER.female : SVI_DOPPLER.male, age);
 
 export const CALIB = {
   /** CMR SSFP stroke volume exceeds Doppler/thermodilution stroke volume; this scale
    *  brings the Maceira values to the model's flow level (v1 default: 72 mL in a
-   *  45-y man of BSA 1.90 m² ⇒ 37.9 mL/m² ≈ 0.70 × 54). Kept as one documented
-   *  constant so the age and sex differences come from the source unchanged. */
+   *  45-y man of BSA 1.90 m² ⇒ 37.9 mL/m² ≈ 0.70 × 54). Not from a published conversion;
+   *  kept as one documented constant so the age and sex differences come from the source. */
   svScale: 0.70
 } as const;
 
@@ -88,12 +110,46 @@ export const CALIB = {
 export const MUS_PWV = { slope: 0.048, anchorAge: 45, anchor: 9.0 } as const;
 export const musPWV = (age: number): number => MUS_PWV.anchor + MUS_PWV.slope * (age - MUS_PWV.anchorAge);
 
+/** Arteriolar radius (%) and reflection coefficient Γ fitted at the eight healthy study
+ *  profiles (v2.5 fits, HR 70 bpm, ejection 300 ms, the profiles' heights and weights): radius so
+ *  cuff SBP = Herbert 2014 central SBP + amplification for the sex and decade; Γ so AIx =
+ *  Janner 2010 for sex, age, HR 70 and height. Between the knots the values are interpolated
+ *  linearly; below 25 y and above 80 y they are held flat (extrapolated). The knots equal the
+ *  STUDY_PROFILES values; tests/calibration.test.ts checks that and that the fitted targets
+ *  are still met (the "Cuff SBP" and "AIx" rows on the Validation tab). */
+export const AGE_FIT = {
+  ages: [25, 45, 65, 80],
+  male:   { radius: [102.5, 100.5, 101.5, 99], gamma: [0.14, 0.23, 0.24, 0.27] },
+  female: { radius: [100, 96.5, 96, 94],       gamma: [0.27, 0.37, 0.32, 0.32] }
+} as const;
+const knots = (ys: readonly number[]) => AGE_FIT.ages.map((a, i) => [a, ys[i]] as const);
+export const radiusFor = (sex: number, age: number): number =>
+  interp(knots((sex === 1 ? AGE_FIT.female : AGE_FIT.male).radius), age);
+export const gammaFor = (sex: number, age: number): number =>
+  interp(knots((sex === 1 ? AGE_FIT.female : AGE_FIT.male).gamma), age);
+
+/** Age range each calibrated input rests on, in years; outside it the value is held flat. */
+export const CAL_DATA_RANGE = {
+  diam: [1, 85],      // Campens 2014 sample
+  cAo: [25, 75],      // RVASC decade midpoints (strict-normal sample to 85, ≥ 70 pooled)
+  sv: [25, 75],       // Maceira decile midpoints (20–29 … 70–79)
+  cMus: [20, 70],     // Avolio 1983 slope (anchor from v1)
+  radius: [25, 80],   // fitted study profiles
+  gamma: [25, 80]
+} as const;
+export type CalKey = keyof typeof CAL_DATA_RANGE;
+/** Calibrated inputs whose value at this age is extrapolated beyond their data. */
+export const extrapolatedAt = (age: number): CalKey[] =>
+  (Object.keys(CAL_DATA_RANGE) as CalKey[]).filter(k => age < CAL_DATA_RANGE[k][0] || age > CAL_DATA_RANGE[k][1]);
+
 export interface Calibration {
   bsa: number;
   cMus: number;
   diam: number; diamRange: [number, number];
   cAo: number; pwvRange: [number, number];
   sv: number; svi: number;
+  radius: number; gamma: number;
+  extrapolated: CalKey[];
 }
 
 /** Calibrated inputs for a patient. */
@@ -107,12 +163,14 @@ export function calibrate(p: Pick<Params, 'sex' | 'age' | 'height' | 'weight'>):
     diam: d.mean, diamRange: [d.lo, d.hi],
     cAo: pwv.mean, pwvRange: [pwv.lo, pwv.hi],
     sv: svi * bsa, svi,
-    cMus: musPWV(p.age)
+    cMus: musPWV(p.age),
+    radius: radiusFor(p.sex, p.age), gamma: gammaFor(p.sex, p.age),
+    extrapolated: extrapolatedAt(p.age)
   };
 }
 
-/** Inputs that calibration sets. */
-export const CALIBRATED_KEYS = ['diam', 'cAo', 'sv', 'cMus'] as const;
+/** Inputs that calibration sets (v2.7 adds arteriolar radius and Γ). */
+export const CALIBRATED_KEYS = ['diam', 'cAo', 'sv', 'cMus', 'radius', 'gamma'] as const;
 /** Inputs whose change triggers calibration. */
 export const DEMOGRAPHIC_KEYS = ['sex', 'age', 'height', 'weight'] as const;
 
@@ -124,6 +182,8 @@ export function applyCalibration(p: Params): Params {
     diam: Number((Math.round(c.diam / 0.05) * 0.05).toFixed(2)),
     cAo: Math.round(c.cAo * 10) / 10,
     sv: Math.round(c.sv),
-    cMus: Math.round(c.cMus * 10) / 10
+    cMus: Math.round(c.cMus * 10) / 10,
+    radius: Math.round(c.radius * 2) / 2,
+    gamma: Math.round(c.gamma * 100) / 100
   };
 }

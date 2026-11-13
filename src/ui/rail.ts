@@ -192,10 +192,10 @@ export function renderRailBeat(ctx: Ctx): void {
     hr: `ejection ${m.et.toFixed(0)} ms · cycle ${(60000 / act.hr).toFixed(0)} ms${beat.effect.reflexBpm ? ` · baroreflex ${beat.effect.reflexBpm.toFixed(1)} bpm` : ''}${hrNote}`,
     sv: `cardiac output ${m.co.toFixed(2)} L/min · reference for age/sex/size ${cal.sv.toFixed(0)} mL${beat.effect.svRise > 0.05 ? ` · +${beat.effect.svRise.toFixed(1)} mL from slower HR` : ''}`,
     etScale: `${etNote} · setting ${act.etScale.toFixed(2)} × Weissler`,
-    radius: `SVR ${m.svrDyn.toFixed(0)} dyn·s·cm⁻⁵`, cAo: `operating ${m.cAoOp.toFixed(1)} m/s at MAP ${m.map.toFixed(0)} · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cAo.toFixed(1)} (${range2(cal.pwvRange, 1)}) m/s`,
+    radius: `SVR ${m.svrDyn.toFixed(0)} dyn·s·cm⁻⁵ · healthy ${p.inputs.age.toFixed(0)} y: ${cal.radius.toFixed(1)} %`, cAo: `operating ${m.cAoOp.toFixed(1)} m/s at MAP ${m.map.toFixed(0)} · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cAo.toFixed(1)} (${range2(cal.pwvRange, 1)}) m/s`,
     diam: `compliance ${m.ctot.toFixed(2)} mL/mmHg · predicted ${cal.diam.toFixed(2)} (${range2(cal.diamRange, 2)}) cm`, cMus: `reflected-wave path ${m.cPath.toFixed(1)} m/s · healthy ${p.inputs.age.toFixed(0)} y: ${cal.cMus.toFixed(1)} m/s (Avolio 1983 slope)`,
-    gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`,
-    sex: `ejection line ${act.sex === 1 ? '418 − 1.6·HR' : '413 − 1.7·HR'} ms`, age: 'sets the calibration only',
+    gamma: `echo amplitude ${m.bwdAmp.toFixed(1)} mmHg · fitted for ${p.inputs.age.toFixed(0)} y: ${cal.gamma.toFixed(2)}`, lpScale: `Lp ${m.lp.toFixed(0)} cm · Δtp ${m.dtp.toFixed(0)} ms`, height: `Lp ${m.lp.toFixed(0)} cm`,
+    sex: `ejection line ${act.sex === 1 ? '418 − 1.6·HR' : '413 − 1.7·HR'} ms`, age: cal.extrapolated.length ? `sets the calibration only · extrapolated beyond the data at this age: ${cal.extrapolated.join(', ')}` : 'sets the calibration only',
     resp: respNote(beat.effect.response, p.inputs),
     hrRest: Math.round(p.inputs.resp) === 0 ? 'used only by Pacing, Exercise and Physiologic' : `SV slider = stroke volume at ${p.inputs.hrRest.toFixed(0)} bpm`,
     weight: `BSA ${cal.bsa.toFixed(2)} m² (Du Bois) · BMI ${(p.inputs.weight / Math.pow(p.inputs.height / 100, 2)).toFixed(1)}`

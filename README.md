@@ -47,6 +47,15 @@ Also: drugs as bolus or infusion events with onset/offset (13 drugs), guided cas
 and scoring, pin baseline (`B`), undo/redo, shareable links (Copy link), exports (PNG, CSV, JSON),
 Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour (`H`).
 
+### New in v2.7 (age evidence recalibration)
+
+- **The age slider calibrates SVR and Γ too**: arteriolar radius and Γ follow age curves through the
+  refitted healthy study profiles, so any age gives a calibrated healthy patient. Inputs outside
+  their data's age range are held flat and listed as extrapolated.
+- **Validation §11 and new profile rows**: stroke volume and cardiac index vs WASE Doppler, SVR index (Redfield 2005),
+  reflected-wave timing (Phan 2016), Zc across methods, and a MAP-plateau check (a known miss).
+- **Methods §16**: data provenance for every age-dependent input and where the evidence disagrees.
+
 ### New in v2.1
 
 - **Patient inputs**: sex, age, height and weight. Changing any of them recalculates aortic

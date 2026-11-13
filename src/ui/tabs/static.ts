@@ -74,7 +74,7 @@ export function renderValidation(): void {
     <h2>5 · Healthy study profiles vs reference data (v2.1, refitted v2.5)</h2>
     <p class="fine"><b>How to read sections 5–8.</b> Each row has a type. Only <i>prediction vs data</i> rows test the model against evidence it was not built from. <i>Fitted to data</i> rows show a rule reproduces the numbers it was set from. <i>Textbook range</i> rows compare with a general normal range. <i>Consistency</i> rows check the code does what Methods says. The verdict for the last three types is not evidence that the model is clinically valid.</p>
     <p>${dataScore(s5.profiles.flatMap(p => p.checks))}</p>
-    <p>Each profile is calibrated from sex, age, height and weight (aortic diameter, aortic PWV, stroke volume, arm PWV; see Methods §9). Two inputs were then fitted: SVR to Herbert's healthy cuff SBP and Γ to AIx, marked <i>fitted</i>. Every other row is a model prediction compared with healthy-adult data it was not fitted to, cuff values with cuff data and device values with device data (Methods §15). "Near" means just outside the reference range.</p>
+    <p>Each profile is calibrated from sex, age, height and weight (aortic diameter, aortic PWV, stroke volume, arm PWV; see Methods §9). Two inputs were then fitted: SVR to Herbert's healthy cuff SBP and Γ to AIx, marked <i>fitted</i>; since v2.7 these fits also form the age curves the calibration uses at any age (Methods §16). Every other row is a model prediction compared with healthy-adult data it was not fitted to, cuff values with cuff data and device values with device data (Methods §15). "Near" means just outside the reference range.</p>
     <h3>Model outputs, all eight profiles</h3>
     <div class="table-wrap"><table class="vt"><tr><th>Output</th>${s5.profiles.map(p => `<th>${shortName(p.name)}</th>`).join('')}</tr>
     ${SUMMARY.map(([k, l, d]) => `<tr><td>${l}</td>${s5.profiles.map(p => `<td class="n">${(k === 'Ew' ? p.out[k] / 1000 : p.out[k]).toFixed(d)}</td>`).join('')}</tr>`).join('')}
@@ -82,7 +82,7 @@ export function renderValidation(): void {
       return `<td class="n"><span class="pass">${n('pass')}</span> / <span class="near">${n('near')}</span> / <span class="fail">${n('fail')}</span></td>`; }).join('')}</tr></table></div>
     <p class="fine">M = man, F = woman, number = age. Heart rate 70 bpm in every profile. Inputs and the reference tables are on the Methods tab (§9).</p>
     ${s5.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(p.checks)}</table></div>`).join('')}
-    <div class="note">Known limitations, also listed in Methods §15: the women's profiles at 45 and 80 y amplify the pulse less than invasive data show (intra-arterial brachial − aortic SBP 2–4 vs 8.0 mmHg, a mostly male cohort); the fitted free-asymptote τ is short at 65–80 y (0.14–0.15 s). Use these profiles for trends and comparisons between groups, and enter each subject's own height, weight, heart rate and measured values where you have them.</div>
+    <div class="note">Known limitations, also listed in Methods §15: the women's profiles at 45 and 80 y amplify the pulse less than invasive data show (intra-arterial brachial − aortic SBP 2–4 vs 8.0 mmHg, a mostly male cohort); the fitted free-asymptote τ is short at 65–80 y (0.14–0.15 s); and the women's SVR index runs 20–29 % above Redfield 2005 at 45–80 y (Validation §11). Use these profiles for trends and comparisons between groups, and enter each subject's own height, weight, heart rate and measured values where you have them.</div>
   </div>
   <div class="card prose" style="max-width:none">
     <h2>6 · Heart rate to 180 bpm and diastolic decay (v2.1)</h2>
@@ -112,6 +112,12 @@ export function renderValidation(): void {
     <p>Changes from 60 to 100 bpm in 22 pacemaker patients (mean age 63), against the 65-year-old man in Pacing mode, measured as the study measured (cuff; cuff-calibrated device). Changes are compared rather than absolute values because the populations differ. ${dataScore(s5.wilkinson)}</p>
     <p class="fine">Diastolic pressure matches. The misses share one pattern: in the patients the forward wave's height (P1 − DBP) stayed level and the brachial pulse followed it (PPP : (P1 − CDBP) ≈ 1.7–1.8 throughout), so only the reflected augmentation fell. In the model the forward wave shrinks with stroke volume, which lowers cuff and central SBP. Cardiac output was not measured. In bradycardic pacemaker patients it rises with pacing rate (+35 % from 60 to 90 bpm; Yokota 2023), unlike normal hearts (Ross 1965; Parker 1971). Given Yokota's stroke volumes the model reproduces these patients' central SBP (+2 vs +3 mmHg) and forward-wave height (+1 vs +2 mmHg), so most of the gap is the population, not the arteries (Methods §15).</p>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.wilkinson)}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>11 · Age trends across the study profiles (v2.7)</h2>
+    <p>Trends from 25 to 80 y compared with the aging evidence (Methods §16). Evidence on several of these is mixed by method and study design; the rows say which study the model is held to. ${dataScore(s5.aging)}</p>
+    <p class="fine">The MAP rows are a known limitation: the 65-year-old man's MAP is 8 mmHg below the 45-year-old's (women 4 mmHg), where the data describe a plateau. Calibrating stroke volume to WASE Doppler data (flat with age) widened this to 8–9 mmHg and was reverted (Methods §16).</p>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.aging)}</table></div>
   </div>`;
 }
 

@@ -1,13 +1,14 @@
 /* v2.1: patient calibration, study profiles, ejection time in ms, HR to 180 bpm, diastolic decay. */
 import { describe, expect, it } from 'vitest';
 import { ALL_CONTROLS, DEFAULTS, PRESETS, STUDY_PROFILES, controlText, weisslerMs, type Params } from '../src/config/physiology';
-import { aortaDiameter, applyCalibration, bsaDuBois, calibrate, pwvNormal, svIndex } from '../src/model/calibrate';
+import { aortaDiameter, applyCalibration, bsaDuBois, calibrate, extrapolatedAt, gammaFor, pwvNormal, radiusFor, svIndex, svIndexDoppler } from '../src/model/calibrate';
 import { diastolicDecay } from '../src/model/indices';
 import { simulate } from '../src/model';
 import { runStudyValidation } from '../src/model/validationStudy';
 import { withInput } from '../src/state/store';
 import { decodeHash, encodeState } from '../src/state/url';
 import { defaultState } from '../src/state/types';
+import { methodsHtml } from '../src/config/methods';
 
 const ET = ALL_CONTROLS.find(c => c.key === 'etScale')!;
 
@@ -31,9 +32,34 @@ describe('calibration equations', () => {
     expect(pwvNormal(18).mean).toBe(6.2);
     expect(pwvNormal(90).mean).toBe(10.9);
   });
-  it('Maceira 2006 SV index falls with age and is lower in women', () => {
+  it('Maceira 2006 SV index (× 0.70) is used for calibration: falls with age and is lower in women', () => {
+    expect(svIndex(0, 25)).toBeCloseTo(56 * 0.70, 10);
     expect(svIndex(0, 25)).toBeGreaterThan(svIndex(0, 75));
     expect(svIndex(1, 45)).toBeLessThan(svIndex(0, 45));
+  });
+  it('WASE 2021 Doppler SV index is kept for comparison: group means at the midpoints', () => {
+    expect(svIndexDoppler(0, 29)).toBe(39.7); expect(svIndexDoppler(0, 53)).toBe(39.0); expect(svIndexDoppler(0, 72)).toBe(39.3);
+    expect(svIndexDoppler(1, 29)).toBe(37.4); expect(svIndexDoppler(1, 53)).toBe(38.1); expect(svIndexDoppler(1, 72)).toBe(38.3);
+  });
+  it('radius and Γ age curves pass through the fitted study profiles and are flat beyond 25–80 y', () => {
+    for (const sp of Object.values(STUDY_PROFILES)) {
+      expect(radiusFor(sp.sex, sp.age)).toBe(sp.radius);
+      expect(gammaFor(sp.sex, sp.age)).toBe(sp.gamma);
+    }
+    expect(radiusFor(0, 90)).toBe(radiusFor(0, 80)); expect(gammaFor(1, 20)).toBe(gammaFor(1, 25));
+    expect(gammaFor(0, 55)).toBeCloseTo((0.23 + 0.24) / 2, 10);
+  });
+  it('calibration flags what is extrapolated at a given age', () => {
+    expect(extrapolatedAt(50)).toEqual([]);
+    expect(extrapolatedAt(90)).toEqual(['diam', 'cAo', 'sv', 'cMus', 'radius', 'gamma']);
+    expect(extrapolatedAt(78)).toEqual(['cAo', 'sv', 'cMus']);
+  });
+  it('study profiles use the calibrated values for their sex, age, height and weight', () => {
+    for (const [name, sp] of Object.entries(STUDY_PROFILES)) {
+      const c = applyCalibration({ ...DEFAULTS, ...PRESETS[name] });
+      expect({ name, diam: c.diam, cAo: c.cAo, sv: c.sv, cMus: c.cMus, radius: c.radius, gamma: c.gamma })
+        .toEqual({ name, diam: sp.diam, cAo: sp.cAo, sv: sp.sv, cMus: sp.cMus, radius: sp.radius, gamma: sp.gamma });
+    }
   });
   it('applyCalibration sets diameter, PWV and SV on slider steps', () => {
     const p = applyCalibration({ ...DEFAULTS, sex: 1, age: 65, height: 160, weight: 61 });
@@ -45,14 +71,15 @@ describe('calibration equations', () => {
 });
 
 describe('demographic inputs', () => {
-  it('changing age, height, weight or sex recalibrates; other inputs are untouched', () => {
-    const before: Params = { ...DEFAULTS, gamma: 0.5, radius: 97 };
+  it('changing age, height, weight or sex recalibrates (v2.7: radius and Γ too); other inputs are untouched', () => {
+    const before: Params = { ...DEFAULTS, gamma: 0.5, radius: 97, cMus: 12, lpScale: 1.2 };
     for (const [key, value] of [['age', 70], ['height', 160], ['weight', 95], ['sex', 1]] as const) {
       const after = withInput(before, key, value);
       expect(after[key]).toBe(value);
       const cal = applyCalibration({ ...before, [key]: value } as Params);
       expect(after.diam).toBe(cal.diam); expect(after.cAo).toBe(cal.cAo); expect(after.sv).toBe(cal.sv);
-      expect(after.gamma).toBe(0.5); expect(after.radius).toBe(97);
+      expect(after.radius).toBe(cal.radius); expect(after.gamma).toBe(cal.gamma);
+      expect(after.lpScale).toBe(1.2); expect(after.hr).toBe(DEFAULTS.hr);
     }
   });
   it('other inputs do not recalibrate', () => {
@@ -139,7 +166,8 @@ describe('study-profile validation', () => {
   });
   it('known limitations stay as documented (no new failures)', () => {
     const fails = r.profiles.flatMap(p => p.checks.filter(c => c.verdict === 'fail').map(c => `${p.name}: ${c.what}`));
-    expect(fails).toEqual(['Healthy woman (45 y): Intra-arterial brachial − aortic SBP', 'Healthy woman (80 y): Intra-arterial brachial − aortic SBP']);
+    // v2.7 adds the SVR index row: the 80-y woman's SVRI is 29 % above Redfield 2005.
+    expect(fails).toEqual(['Healthy woman (45 y): Intra-arterial brachial − aortic SBP', 'Healthy woman (80 y): SVR index', 'Healthy woman (80 y): Intra-arterial brachial − aortic SBP']);
   });
 });
 
@@ -152,5 +180,39 @@ describe('v2.4 model review checks', () => {
     const last = laws[laws.length - 1];
     expect(last.what).toMatch(/Known limitation/);
     expect(last.verdict).toBe('fail');
+  });
+});
+
+describe('v2.7 age evidence', () => {
+  const s = runStudyValidation();
+  it('stroke-volume index rows match WASE and cardiac index stays in the Doppler range', () => {
+    for (const p of s.profiles) {
+      expect(p.checks.find(c => c.what === 'Stroke-volume index (calibration)')!.verdict, p.name).toBe('pass');
+      expect(p.checks.find(c => c.what === 'Stroke-volume index vs Doppler')!.verdict, p.name).toBe('pass');
+      expect(p.checks.find(c => c.what === 'Cardiac index (HR 70)')!.verdict, p.name).toBe('pass');
+    }
+  });
+  it('SVR index: men match Redfield; women run high (pinned)', () => {
+    const v = s.profiles.filter(p => !p.name.includes('25 y')).map(p => `${p.name}: ${p.checks.find(c => c.what === 'SVR index')!.verdict}`);
+    expect(v).toEqual(['Healthy man (45 y): pass', 'Healthy man (65 y): pass', 'Healthy man (80 y): pass',
+      'Healthy woman (45 y): near', 'Healthy woman (65 y): near', 'Healthy woman (80 y): fail']);
+  });
+  it('age-trend verdicts are pinned (MAP plateau is the documented miss)', () => {
+    expect(s.aging.map(c => `${c.what}: ${c.verdict}`)).toEqual([
+      'Reflected-wave round trip, change per decade 25 → 65 y (men): pass',
+      'Reflected-wave round trip, change per decade 25 → 65 y (women): pass',
+      'SVR index, 45 → 80 y (men): pass',
+      'SVR index, 45 → 80 y (women): pass',
+      'MAP after midlife: lowest of 65 / 80 y minus 45 y (men): fail',
+      'MAP after midlife: lowest of 65 / 80 y minus 45 y (women): near',
+      'Characteristic impedance Zc, 25–45 y profiles: pass'
+    ]);
+  });
+  it('Methods documents the provenance and the superseded SV rule', () => {
+    const html = methodsHtml();
+    expect(html).toContain('16 · Age evidence and data provenance (v2.7)');
+    expect(html).toContain('WASE, Patel 2021');
+    expect(html).toContain('tried in v2.7 and reverted');
+    expect(html).toContain('bolus');
   });
 });
