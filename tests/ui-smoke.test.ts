@@ -35,8 +35,8 @@ async function frames(n: number, dtMs = 50): Promise<void> {
 }
 
 const click = (sel: string) => { const el = document.querySelector<HTMLElement>(sel); if (!el) throw new Error(`missing ${sel}`); el.click(); };
-const TAB_IDS = ['sim', 'cycle', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq'];
-/** Every tab must open by click and by keys 1–8, from every other tab. */
+const TAB_IDS = ['sim', 'cycle', 'cmp', 'learn', 'sweep', 'imp', 'valid', 'eq', 'research'];
+/** Every tab must open by click and by keys 1–9, from every other tab. */
 async function checkAllTabs(when: string): Promise<void> {
   const visible = () => TAB_IDS.filter(t => !document.querySelector(`#pane-${t}`)!.hasAttribute('hidden'));
   for (const from of TAB_IDS) for (const [i, to] of TAB_IDS.entries()) {
@@ -73,8 +73,8 @@ describe('UI smoke test', () => {
     expect(errors).toEqual([]);
   });
 
-  it('every tab renders (keys 1–8)', async () => {
-    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8']) {
+  it('every tab renders (keys 1–9)', async () => {
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
       key(k); await frames(25);
       const tab = TAB_IDS[Number(k) - 1];
       expect(document.querySelector(`#pane-${tab}`)!.hasAttribute('hidden')).toBe(false);
@@ -82,7 +82,7 @@ describe('UI smoke test', () => {
     }
     expect(document.querySelector('#pane-valid')!.textContent).toContain('Formula checks');
     expect(errors).toEqual([]);
-  });
+  }, 30000);   // the Validation tab runs the full v3 validation (≈ 100 ventricle beats) on first open
 
   it('inputs, drugs, pin, undo and explain work', async () => {
     key('1');
@@ -180,7 +180,7 @@ describe('UI smoke test', () => {
     expect(errors).toEqual([]);
   }, 60_000);
 
-  it('every tab works (clicks and keys 1–8) while a guided case runs, after Quit and after Finish', async () => {
+  it('every tab works (clicks and keys 1–9) while a guided case runs, after Quit and after Finish', async () => {
     click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
     click('[data-dose="1"]'); click('[data-give="propofol"][data-mode="bolus"]'); await frames(200, 250);
     await checkAllTabs('during case');

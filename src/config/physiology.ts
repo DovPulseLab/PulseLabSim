@@ -521,7 +521,7 @@ export const CITATIONS = {
   Wisheart1973: 'Wisheart JD, Wright JEC, Rosenfeldt FL, Ross JK. Atrial and ventricular pacing after open heart surgery. Thorax 1973;28:9–14.',
   Karamanoglu1993: 'Karamanoglu M, O\'Rourke MF, Avolio AP, Kelly RP. An analysis of the relationship between central aortic and peripheral upper limb pressure waves in man. Eur Heart J 1993;14:160–167.',
   Westerhof2007: 'Westerhof BE, Guelen I, Stok WJ, et al. Arterial pressure transfer characteristics: effects of travel time. Am J Physiol Heart Circ Physiol 2007;292:H800–H807.',
-  Yokota2023: 'Yokota A, Kabutoya T, Hoshide S, Kario K. Comparison of heart rate and cardiac output of VVI pacemaker settings in patients with atrial fibrillation with bradycardia. J Arrhythm 2023;39:574–579.',
+  Yokota2023: 'Yokota A, Kabutoya T, Mitama T, et al. Comparison of heart rate and cardiac output of VVI pacemaker settings in patients with atrial fibrillation with bradycardia. J Arrhythm 2023;39:574–579.',
   Harrison1989: 'Harrison MR, Clifton GD, Sublett KL, DeMaria AN. Effect of heart rate on Doppler indexes of systolic function in humans. J Am Coll Cardiol 1989;14:929–935.',
   Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.',
   Stergiopulos1996: 'Stergiopulos N, Meister JJ, Westerhof N. Determinants of stroke volume and systolic and diastolic aortic pressure. Am J Physiol 1996;270:H2050–H2059.',
