@@ -2,6 +2,7 @@
 import { methodsHtml } from '../../config/methods';
 import { runValidation, type Verdict } from '../../model/validation';
 import { runStudyValidation, type StudyCheck } from '../../model/validationStudy';
+import { runV3Validation } from '../../model/validationV3';
 import { $ } from '../dom';
 
 const f = (v: number | null, d = 1) => v == null ? '—' : v.toFixed(d);
@@ -39,7 +40,7 @@ let validDone = false, eqDone = false;
 
 export function renderValidation(): void {
   if (validDone) return; validDone = true;
-  const r = runValidation(), s5 = runStudyValidation();
+  const r = runValidation(), s5 = runStudyValidation(), v3 = runV3Validation();
   $('#pane-valid').innerHTML = `
   <div class="card prose" style="max-width:none">
     <h2>1 · Formula checks against published numbers</h2>
@@ -118,6 +119,18 @@ export function renderValidation(): void {
     <p>Trends from 25 to 80 y compared with the aging evidence (Methods §16). Evidence on several of these is mixed by method and study design; the rows say which study the model is held to. ${dataScore(s5.aging)}</p>
     <p class="fine">The MAP rows are a known limitation: the 65-year-old man's MAP is 8 mmHg below the 45-year-old's (women 4 mmHg), where the data describe a plateau. Calibrating stroke volume to WASE Doppler data (flat with age) widened this to 8–9 mmHg and was reverted (Methods §16).</p>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.aging)}</table></div>
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>12 · Ventricle model (v3): the eight study profiles</h2>
+    <p>With <b>Heart model → Ventricle (v3)</b> aortic flow is no longer prescribed: a time-varying elastance left ventricle ejects into the same arterial tree (Methods §17). Each profile's E<sub>es</sub> was fitted to its stroke volume, and its arteriolar radius and reflection to cuff SBP and AIx, as in v2, so those three rows are targets. Everything else (LVEDP, dP/dt, τ, IVRT, EF, E<sub>a</sub>/E<sub>es</sub>) is a model output. ${dataScore(v3.profiles.flatMap(p => p.checks))}</p>
+    <h3>Model outputs, all eight profiles</h3>
+    <div class="table-wrap"><table class="vt"><tr><th>Profile</th><th>E<sub>es</sub> (mmHg/mL)</th><th>E<sub>a</sub>/E<sub>es</sub></th><th>EDV / ESV (mL)</th><th>EF (%)</th><th>LVEDP (mmHg)</th><th>LV peak (mmHg)</th><th>dP/dt max</th><th>dP/dt min</th><th>τ (ms)</th><th>IVCT / IVRT (ms)</th><th>LVET (ms)</th></tr>
+    ${v3.profiles.map(({ name, r }) => `<tr><td>${shortName(name)}</td><td class="n">${f(r.lvp.ees, 2)}</td><td class="n">${f(r.ea / r.lvp.ees, 2)}</td><td class="n">${f(r.edv, 0)} / ${f(r.esv, 0)}</td><td class="n">${f(r.ef * 100, 0)}</td><td class="n">${f(r.lvedp, 1)}</td><td class="n">${f(r.lvsp, 0)}</td><td class="n">${f(r.dpdtMax, 0)}</td><td class="n">${f(r.dpdtMin, 0)}</td><td class="n">${f(r.tau * 1000, 0)}</td><td class="n">${f(r.ivct * 1000, 0)} / ${f(r.ivrt * 1000, 0)}</td><td class="n">${f(r.lvet * 1000, 0)}</td></tr>`).join('')}
+    </table></div>
+    <h3>Trends with age</h3>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(v3.trends)}</table></div>
+    ${v3.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(p.checks)}</table></div>`).join('')}
+    <p class="fine">Known misses: the 25-year-old man's AIx is above Janner 2010 because his reflection coefficient is at its floor, and his DBP is high; women's SVRI at 65–80 y is above Redfield 2005. The MAP dip after midlife persists (men −5, women −2.5 mmHg), smaller than with the v2 heart. Absolute dP/dt values should be read as ± 200 mmHg/s: the elastance model has no separate force–velocity or load-dependent relaxation terms.</p>
   </div>`;
 }
 

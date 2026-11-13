@@ -18,6 +18,7 @@ const CMP_ROWS: [string, [string, string, string, number][]][] = [
   ['Blood pressure', [['bSBP', 'Cuff SBP', 'mmHg', 0], ['bDBP', 'Cuff DBP', 'mmHg', 0], ['Ps', 'Central SBP', 'mmHg', 0], ['Pd', 'Central DBP', 'mmHg', 0], ['PP', 'Central pulse pressure', 'mmHg', 0], ['map', 'Mean arterial pressure', 'mmHg', 0]]],
   ['Wave reflection', [['AIx', 'Augmentation index', '%', 1], ['AIx75', 'AIx at HR 75', '%', 1], ['AP', 'Augmentation pressure', 'mmHg', 1], ['ppa', 'PP amplification', '×', 2], ['dtp', 'Echo return time Δtp', 'ms', 0], ['rm', 'Reflection magnitude', '%', 0]]],
   ['Arteries & flow', [['cAoOp', 'Aortic PWV', 'm/s', 1], ['co', 'Cardiac output', 'L/min', 2], ['svrDyn', 'SVR', 'dyn·s·cm⁻⁵', 0], ['ctot', 'Compliance', 'mL/mmHg', 2], ['zcDyn', 'Characteristic impedance', 'dyn·s·cm⁻⁵', 0]]],
+  ['Left ventricle (v3 ventricle model)', [['svOut', 'Stroke volume (ejected)', 'mL', 0], ['ef', 'Ejection fraction', '%', 0], ['lvEDP', 'LVEDP', 'mmHg', 1], ['lvESP', 'LV end-systolic pressure', 'mmHg', 0], ['dpdtMax', 'dP/dt max', 'mmHg/s', 0], ['tauLV', 'Relaxation τ', 'ms', 0], ['ees', 'Ees', 'mmHg/mL', 2], ['eaEes', 'Ea/Ees', '', 2]]],
   ['Load on the heart', [['Ew', 'Wasted LV energy ΔEw', 'dyn·s/cm²', 0], ['lsEs', 'Late/early systolic load', '', 2], ['tti', 'Tension-time index', 'mmHg·s', 1], ['sevr', 'SEVR (supply/demand)', '%', 0]]]
 ];
 
@@ -112,9 +113,9 @@ export function renderCmp(ctx: Ctx): void {
   const rows = CMP_ROWS.map(([g, list]) => `<tr class="grp"><td colspan="4">${g}</td></tr>` + list.map(([k, l, u, f]) => {
     const a = (A.m as unknown as Record<string, number>)[k], b = (B.m as unknown as Record<string, number>)[k], d = b - a;
     const rel = Math.abs(d) / Math.max(Math.abs(a), 1e-9);
-    const cls = Math.abs(d) < Math.pow(10, -f) / 2 ? 'same' : d > 0 ? 'up' : 'dn';
+    const cls = !Number.isFinite(d) ? 'na' : Math.abs(d) < Math.pow(10, -f) / 2 ? 'same' : d > 0 ? 'up' : 'dn';
     return `<tr><td><button class="nm linklike" data-explain="${k}">${l}</button> <span class="muted">${u}</span></td><td class="mono">${fmt(a, f)}</td><td class="mono">${fmt(b, f)}</td>
-      <td class="mono"><span class="d ${cls}">${cls === 'same' ? '±0' : (d > 0 ? '▲ +' : '▼ ') + fmt(d, f)}</span>${cls === 'same' ? '' : `<span class="bar-d" style="width:${Math.min(46, rel * 120).toFixed(0)}px;background:var(${cls === 'up' ? '--up' : '--down'});opacity:.55"></span>`}</td></tr>`;
+      <td class="mono"><span class="d ${cls}">${cls === 'na' ? '—' : cls === 'same' ? '±0' : (d > 0 ? '▲ +' : '▼ ') + fmt(d, f)}</span>${cls === 'same' || cls === 'na' ? '' : `<span class="bar-d" style="width:${Math.min(46, rel * 120).toFixed(0)}px;background:var(${cls === 'up' ? '--up' : '--down'});opacity:.55"></span>`}</td></tr>`;
   }).join('')).join('');
   $('#cmpTable').innerHTML = `<div class="table-wrap"><table class="ct"><thead><tr><th>Measure</th><th class="A">A</th><th class="B">B</th><th>B − A</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 

@@ -49,6 +49,8 @@ export interface Cycle {
   tAO: number; tAC: number; tMC: number; tMO: number;
   /** LV relaxation time constant used (s); shorter than CYCLE.tauLV only when diastole is very short */
   tauIVR: number;
+  /** true when LV pressure, volume and valve timing come from the v3 ventricle model (not schematic) */
+  modelled: boolean;
 }
 
 const smooth = (x: number) => { const c = Math.min(1, Math.max(0, x)); return c * c * (3 - 2 * c); };
@@ -58,9 +60,10 @@ const pd = (t: number, c: number, T: number) => { let d = (t - c) % T; if (d > T
 
 export function buildCycle(r: BeatResult, n = Math.max(300, Math.round(r.d.T / 0.001))): Cycle {
   const T = r.d.T, ET = r.d.ET, N = r.p.length, mdt = r.dt;
-  const lvedp = r.params.lvedp, sv = r.params.sv;
+  const model = r.lv && Number.isFinite(r.m.ivct) ? r.lv : null;
+  const lvedp = model ? r.m.lvEDP : r.params.lvedp, sv = r.params.sv;
   const dt = T / n;
-  const tMC = CYCLE.qrsToMC, tAO = tMC + CYCLE.ivct, tAC = tAO + ET;
+  const tMC = CYCLE.qrsToMC, tAO = tMC + (model ? r.m.ivct / 1000 : CYCLE.ivct), tAC = tAO + ET;
   // aortic pressure at display time t (model time 0 = start of ejection)
   const aoAt = (t: number) => {
     let tm = (t - tAO) % T; if (tm < 0) tm += T;
@@ -78,9 +81,9 @@ export function buildCycle(r: BeatResult, n = Math.max(300, Math.round(r.d.T / 0
   const laPeak = lvedp + CYCLE.vWave;
   const diastole = T - tAC + tMC;
   const drop = Math.log(Math.max(1.01, pes / laPeak));
-  const ivrt = Math.min(CYCLE.tauLV * drop, 0.45 * diastole);
+  const ivrt = model ? r.m.ivrt / 1000 : Math.min(CYCLE.tauLV * drop, 0.45 * diastole);
   // at very short diastole IVR is squeezed: relax faster so LV still meets LA pressure at mitral opening
-  const tauIVR = ivrt / drop;
+  const tauIVR = model ? r.m.tauLV / 1000 : ivrt / drop;
   const tMO = tAC + ivrt;
   const fillDur = T + tMC - tMO;
   const tAtrial = T + tMC - Math.min(CYCLE.atrialS, 0.35 * fillDur);   // start of atrial systole (display, may exceed T−…)
@@ -89,7 +92,7 @@ export function buildCycle(r: BeatResult, n = Math.max(300, Math.round(r.d.T / 0
   let qpk = 1e-9, dqMax = 1e-9;
   for (let k = 0; k < N - 1 && k * mdt <= ET; k++) { qpk = Math.max(qpk, r.q[k]); dqMax = Math.max(dqMax, -(r.q[k + 1] - r.q[k]) / mdt); }
 
-  const edv = sv / CYCLE.ef, esv = edv - sv;
+  const edv = model ? r.m.edv : sv / CYCLE.ef, esv = model ? r.m.esv : edv - sv;
   const t: number[] = [], ao: number[] = [], lv: number[] = [], la: number[] = [], q: number[] = [], vol: number[] = [], ecg: number[] = [];
   let ejected = 0;
   // filling fractions: passive part approaches (1 − atrialFrac) exponentially, then the atrial kick
@@ -149,6 +152,12 @@ export function buildCycle(r: BeatResult, n = Math.max(300, Math.round(r.d.T / 0
     if (ti >= tAO && ti <= tAC) { if (i > 0 && t[i - 1] >= tAO) ejected += (q[i] + q[i - 1]) / 2 * dt * scale; vol[i] = edv - ejected; }
   }
 
+  if (model) {
+    // v3: LV pressure and volume from the ventricle model (model time 0 = aortic valve opening)
+    const at = (y: number[], ti: number) => { let tm = (ti - tAO) % T; if (tm < 0) tm += T; const x = tm / mdt, k = Math.floor(x) % N, f = x - Math.floor(x); return y[k] * (1 - f) + y[(k + 1) % N] * f; };
+    for (let i = 0; i <= n; i++) { lv[i] = at(model.p, t[i]); vol[i] = at(model.vol, t[i]); }
+  }
+
   const ejMid = tAO + ET * 0.4;
   const fillEnd = Math.min(tAtrial, tMO + 3 * CYCLE.rapidTau);
   // phases on the unwrapped axis (mitral closure → next mitral closure), then wrapped into [0, T)
@@ -175,7 +184,7 @@ export function buildCycle(r: BeatResult, n = Math.max(300, Math.round(r.d.T / 0
     { id: 'AC', label: 'Aortic valve closes', t: tAC },
     { id: 'MO', label: 'Mitral valve opens', t: tMO }
   ];
-  return { T, dt, n, t, ao, lv, la, q, vol, ecg, phases, events, sounds: { s1: tMC, s2: tAC }, edv, esv, sv, lvedp, tAO, tAC, tMC, tMO, tauIVR };
+  return { T, dt, n, t, ao, lv, la, q, vol, ecg, phases, events, sounds: { s1: tMC, s2: tAC }, edv, esv, sv, lvedp, tAO, tAC, tMC, tMO, tauIVR, modelled: !!model };
 }
 
 /** Phase at a display time. */

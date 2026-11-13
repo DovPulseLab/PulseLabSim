@@ -1,3 +1,4 @@
+import { finiteOutputs } from '../src/model/indices';
 import { describe, expect, it } from 'vitest';
 import { simulate, weisslerLVET } from '../src/model';
 import { ALL_CONTROLS, DEFAULTS, MODEL, PHYS, type Params } from '../src/config/physiology';
@@ -69,8 +70,8 @@ describe('ejection', () => {
 describe('robustness', () => {
   it('every index is finite at every slider extreme', () => {
     for (const [, o] of points) {
-      const { m } = at(o);
-      for (const [k, v] of Object.entries(m)) if (typeof v === 'number') expect(Number.isFinite(v), k).toBe(true);
+      const { m, params } = at(o);
+      for (const [k, v] of finiteOutputs(m, params.heart)) expect(Number.isFinite(v), k).toBe(true);
     }
   });
 });

@@ -28,7 +28,7 @@
    index 0 = start of ejection, as in v2.
    ===================================================================== */
 import { DEFAULTS, PHYS, type Params } from '../config/physiology';
-import { bsaDuBois, interp } from './calibrate';
+import { bsaDuBois, interp, registerV3Fits } from './calibrate';
 import { cx, type Cx } from './complex';
 import { derive, type Derived } from './derive';
 import { fft } from './fft';
@@ -253,4 +253,23 @@ export const v3For = (sex: number, age: number) => {
 export function simulateCalibrated(p: Params, lvIn: Partial<LVParams> = {}): LVResult {
   const f = v3For(p.sex, p.age);
   return simulateLV({ ...p, radius: f.radius, gamma: f.gamma }, { ees: f.ees, ...lvIn });
+}
+
+registerV3Fits(v3For);
+
+/** Beat for a patient whose inputs select the ventricle (heart = 1): Ees from the inputs, EDV =
+ *  preload × age-typical EDV, EDPVR constant × lvStiff. Results are cached by input set, because the
+ *  live engine, charts and tabs ask for the same beat many times. */
+const lvCache = new Map<string, BeatResult>();
+export function simulatePatientLV(p: Params): BeatResult {
+  const key = JSON.stringify(p);
+  const hit = lvCache.get(key); if (hit) return hit;
+  const base = lvForPatient(p);
+  const r = simulateLV(p, { ees: p.ees, edv: base.edv * p.preload, a: base.a * p.lvStiff });
+  const out: BeatResult = { ...r.beat, lv: { p: r.lv, vol: r.vol, qm: r.qm },
+    m: { ...r.beat.m, svOut: r.sv, ef: r.ef * 100, edv: r.edv, esv: r.esv, lvEDP: r.lvedp, lvESP: r.lvesp, lvSP: r.lvsp, pla: r.pla,
+      dpdtMax: r.dpdtMax, dpdtMin: r.dpdtMin, tauLV: r.tau * 1000, ivct: r.ivct * 1000, ivrt: r.ivrt * 1000, ees: r.lvp.ees, ea: r.ea, eaEes: r.ea / r.lvp.ees } };
+  if (lvCache.size > 400) lvCache.clear();
+  lvCache.set(key, out);
+  return out;
 }

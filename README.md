@@ -47,6 +47,14 @@ Also: drugs as bolus or infusion events with onset/offset (13 drugs), guided cas
 and scoring, pin baseline (`B`), undo/redo, shareable links (Copy link), exports (PNG, CSV, JSON),
 Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour (`H`).
 
+### New in v3 (left ventricle)
+
+- **Heart model** switch in the rail: *Fixed flow (v2)* (default, unchanged) or *Ventricle (v3)*, a time-varying elastance left ventricle (double-Hill activation, ejection effect, EDPVR by age from Fujimoto 2012) coupled to the same arterial impedance. New inputs: Ees, preload, LV stiffness.
+- New outputs: dP/dt max and min, LVEDP (calculated, not entered), LVESP, peak LV pressure, LA pressure, IVCT, IVRT, τ, EDV, ESV, EF, Ea, Ees, Ea/Ees. Shown in a *Left ventricle (v3)* metrics group and on the Compare tab.
+- Cardiac cycle tab draws the modelled LV pressure and volume and a pressure–volume loop with ESPVR, EDPVR and Ea lines.
+- Excel export adds `lv_pressure`, `lv_volume`, `mitral_flow` and `lv_dPdt` columns.
+- Study profiles refitted with Ees solved per profile (`scripts/fit-v3-profiles.ts`); Validation §12 and Methods §17.
+
 ### New in v2.8
 
 - **Synchronized aortic pressure & flow export (Excel)**: Export ▾ → choose a sampling rate

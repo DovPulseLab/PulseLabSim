@@ -59,7 +59,23 @@ const EXTRA: Record<string, Extra> = {
   dpti: { formula: '∫ diastole (P − LVEDP) dt', normal: '—', node: 'sevr', cite: C.NE2001 },
   sevr: { formula: 'SEVR = DPTI / TTI × 100', normal: '> 130 %', node: 'sevr', cite: C.NE2001 },
   svf: { formula: 'SVf = ∫ (Pf − Pf₀) / Zc dt over ejection', normal: '—', node: 'fwd', cite: C.NE2001 },
-  svrefl: { formula: 'SVr = ∫ (Pb − Pb₀) / Zc dt over ejection', normal: '—', node: 'bwd', cite: C.NE2001 }
+  svrefl: { formula: 'SVr = ∫ (Pb − Pb₀) / Zc dt over ejection', normal: '—', node: 'bwd', cite: C.NE2001 },
+  svOut: { formula: 'SV = EDV − ESV (ventricle ejecting into the arterial input impedance)', normal: '60–100 mL', cite: C.Stergiopulos1996 },
+  ef: { formula: 'EF = SV / EDV', normal: '≈ 55–72 % (MRI, Fujimoto 2012)', cite: C.Fujimoto2012 },
+  edv: { formula: 'EDV = preload × EDV index(age) × BSA', normal: '≈ 50–66 mL/m² × BSA (Fujimoto 2012)', cite: C.Fujimoto2012 },
+  esv: { formula: 'ESV = EDV − SV', normal: '—', cite: C.Fujimoto2012 },
+  lvEDP: { formula: 'P_ED(V) = P_ref · exp(a · (V/BSA − EDVI_ref))', normal: '≈ 11–13 mmHg (PCWP, healthy by age; Fujimoto 2012)', cite: C.Fujimoto2012 },
+  pla: { formula: 'constant P_LA solved so the beat is periodic at the set EDV', normal: '≈ 11–13 mmHg (PCWP)', cite: C.Fujimoto2012 },
+  lvSP: { formula: 'max P_LV', normal: '≈ aortic SBP + a few mmHg', cite: C.Stergiopulos1996 },
+  lvESP: { formula: 'P_LV at aortic valve closure', normal: '≈ 0.9 × SBP', cite: C.Chen1998 },
+  dpdtMax: { formula: 'max dP_LV/dt', normal: '1 000–1 500 mmHg/s', cite: C.ZhangKovacs2009 },
+  dpdtMin: { formula: 'min dP_LV/dt', normal: '−1 400 to −1 800 mmHg/s', cite: C.ZhangKovacs2009 },
+  tauLV: { formula: 'fit of ln P = ln P0 − t/τ from dP/dt min to mitral opening', normal: '≈ 40–50 ms', cite: C.Yamakado1997 },
+  ivct: { formula: 'mitral closure → aortic opening', normal: '≈ 40–80 ms', cite: C.Alhakak2023 },
+  ivrt: { formula: 'aortic closure → mitral opening', normal: '≈ 60–100 ms', cite: C.Alhakak2023 },
+  ees: { formula: 'P_LV = [e(t)·Ees·(V − V0) + (1 − e(t))·P_ED(V)]·(1 − ks·Q), V0 = −20 mL', normal: '≈ 1.7–2.5 mmHg/mL (Redfield 2005)', cite: C.Redfield2005 },
+  ea: { formula: 'Ea = LVESP / SV', normal: '≈ 1.2–2.2 mmHg/mL', cite: C.Chen1998 },
+  eaEes: { formula: 'Ea / Ees', normal: '≈ 0.6–0.7', cite: C.Chen1998 }
 };
 
 const SLIDER_NORMAL: Partial<Record<ParamKey, string>> = {

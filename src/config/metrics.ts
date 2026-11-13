@@ -79,6 +79,24 @@ export const METRICS: { g: string; items: Metric[] }[] = [
     { k: 'sevr', l: 'SEVR (DPTI/TTI)', u: '%', f: 0, st: SL(130, 100), tip: 'Buckberg subendocardial viability ratio. Low values indicate a supply–demand mismatch (Nichols & Edwards).' },
     { k: 'svf', l: 'Forward stroke component SVf', u: 'mL', f: 1, tip: 'SVm = SVf − SVr (Eq. 13). Flow carried by the forward wave.' },
     { k: 'svrefl', l: 'Reflected stroke component SVr', u: 'mL', f: 1, tip: 'Flow cancelled by the reflected wave (it subtracts from flow while adding to pressure).' }
+  ]},
+  { g: 'Left ventricle (v3)', items: [
+    { k: 'svOut', l: 'Stroke volume (ejected)', u: 'mL', f: 0, tip: 'Volume the ventricle ejects against the arterial load: an output of the ventricle model, not an input. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'ef', l: 'Ejection fraction', u: '%', f: 0, st: SL(52, 45), tip: 'SV / EDV. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'edv', l: 'End-diastolic volume', u: 'mL', f: 0, tip: 'Largest LV volume, at mitral closure. Set by the preload input × the age-typical EDV (Fujimoto 2012). Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'esv', l: 'End-systolic volume', u: 'mL', f: 0, tip: 'LV volume at aortic valve closure. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'lvEDP', l: 'LV end-diastolic pressure', u: 'mmHg', f: 1, st: S(15, 20), tip: 'LV pressure at mitral closure, from the end-diastolic pressure–volume curve (EDPVR) at this EDV. Rises with preload and diastolic stiffness. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'pla', l: 'Left-atrial (filling) pressure', u: 'mmHg', f: 1, st: S(15, 20), tip: 'Mean left-atrial pressure that fills the ventricle to its EDV each beat (≈ pulmonary capillary wedge pressure). Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'lvSP', l: 'LV peak systolic pressure', u: 'mmHg', f: 0, tip: 'Highest LV pressure in the beat; slightly above aortic SBP because of the valve and ejection effect. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'lvESP', l: 'LV end-systolic pressure', u: 'mmHg', f: 0, tip: 'LV pressure at aortic valve closure: the end-systolic point of the PV loop. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'dpdtMax', l: 'dP/dt max', u: 'mmHg/s', f: 0, tip: 'Peak rate of LV pressure rise, in isovolumic contraction. Rises with contractility, preload and heart rate. Healthy ≈ 1 000–1 500 mmHg/s (Zhang & Kovács 2009). Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'dpdtMin', l: '−dP/dt (peak fall)', u: 'mmHg/s', f: 0, tip: 'Peak rate of LV pressure fall, in isovolumic relaxation. Healthy ≈ −1 400 to −1 800 mmHg/s (Zhang & Kovács 2009). Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'tauLV', l: 'Relaxation τ', u: 'ms', f: 0, tip: 'Time constant of isovolumic LV pressure decay (zero asymptote), from dP/dt min to mitral opening. Healthy ≈ 40–50 ms, no change with age (Yamakado 1997). Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'ivct', l: 'Isovolumic contraction time', u: 'ms', f: 0, tip: 'Mitral closure to aortic valve opening. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'ivrt', l: 'Isovolumic relaxation time', u: 'ms', f: 0, tip: 'Aortic valve closure to mitral opening. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'ees', l: 'End-systolic elastance Ees', u: 'mmHg/mL', f: 2, tip: 'Contractility: slope of the end-systolic pressure–volume line (input). Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'ea', l: 'Arterial elastance Ea', u: 'mmHg/mL', f: 2, tip: 'Effective arterial load = LV end-systolic pressure / SV. Ventricle model (v3) only; "—" with the fixed-flow heart.' },
+    { k: 'eaEes', l: 'Coupling Ea/Ees', u: '', f: 2, st: v => v <= 1 ? 'ok' : v <= 1.3 ? 'warn' : 'bad', tip: 'Ventricular–arterial coupling. Healthy ≈ 0.6–0.7, about constant with age (Chen 1998; Redfield 2005). Ventricle model (v3) only; "—" with the fixed-flow heart.' }
   ]}
 ];
 export const METRIC_BY_KEY: Partial<Record<MetricKey, Metric>> = Object.fromEntries(METRICS.flatMap(g => g.items).map(m => [m.k, m]));
