@@ -129,8 +129,13 @@ export function renderValidation(): void {
     </table></div>
     <h3>Trends with age</h3>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(v3.trends)}</table></div>
+    <h3>Drugs on the ventricle (v3 stage 5): Healthy man (45 y), one full dose, Independent mode</h3>
+    <p class="fine">Rows marked “fitted” are the drug's input value set from that study; the others are outputs. ${dataScore(v3.drugs)}</p>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(v3.drugs)}</table></div>
+    <h3>Heart rate, pacing and exercise with the ventricle</h3>
+    <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(v3.rate)}</table></div>
     ${v3.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(p.checks)}</table></div>`).join('')}
-    <p class="fine">Known misses: the 25-year-old man's AIx is above Janner 2010 because his reflection coefficient is at its floor, and his DBP is high; women's SVRI at 65–80 y is above Redfield 2005. The MAP dip after midlife persists (men −5, women −2.5 mmHg), smaller than with the v2 heart. Absolute dP/dt values should be read as ± 200 mmHg/s: the elastance model has no separate force–velocity or load-dependent relaxation terms.</p>
+    <p class="fine">Known misses: the 25-year-old man's AIx is above Janner 2010 because his reflection coefficient is at its floor, and his DBP is high; women's SVRI at 65–80 y is above Redfield 2005. The MAP dip after midlife persists (men −5, women −2.5 mmHg), smaller than with the v2 heart. In pacing mode EF falls with rate (no force–frequency effect in the model), where it stays unchanged in normal hearts. Esmolol's contractility fall comes from patients with LV hypertrophy and may overstate the effect in healthy hearts. Absolute dP/dt values should be read as ± 200 mmHg/s: the elastance model has no separate force–velocity or load-dependent relaxation terms.</p>
   </div>`;
 }
 

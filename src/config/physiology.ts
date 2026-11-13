@@ -316,7 +316,11 @@ export interface DrugEffect {
   cAo?: number;      // × intrinsic aortic PWV
   gamma?: number;    // × Γ
   hrAdd?: number;    // + bpm
-  svAdd?: number;    // + mL
+  svAdd?: number;    // + mL (fixed-flow v2 heart only)
+  /** × end-systolic elastance (contractility); Ventricle (v3) only */
+  ees?: number;
+  /** × end-diastolic volume (preload, venous return); Ventricle (v3) only */
+  preload?: number;
 }
 export interface Drug {
   label: string;
@@ -332,9 +336,9 @@ export const DRUGS: Record<string, Drug> = {
   acei:    { label: 'ACE inhibitor', short: 'ACEi', fx: { radius: 1.025, cMus: 0.88, gamma: 0.82, cAo: 0.97 }, illustrative: true, source: DIRECTION_SOURCE },
   arb:     { label: 'Angiotensin receptor blocker', short: 'ARB', fx: { radius: 1.025, cMus: 0.89, gamma: 0.83, cAo: 0.97 }, illustrative: true, source: DIRECTION_SOURCE },
   ccb:     { label: 'Calcium-channel blocker (DHP)', short: 'CCB', fx: { radius: 1.03, cMus: 0.90, gamma: 0.85, hrAdd: 3 }, illustrative: true, source: DIRECTION_SOURCE },
-  bb:      { label: 'Beta-blocker (atenolol)', short: 'β-blocker', fx: { hrAdd: -14, svAdd: 6, radius: 0.99 }, illustrative: true, source: DIRECTION_SOURCE },
-  diur:    { label: 'Thiazide diuretic', short: 'Diuretic', fx: { svAdd: -2, radius: 1.006, gamma: 0.95 }, illustrative: true, source: DIRECTION_SOURCE },
-  nitrate: { label: 'Organic nitrate', short: 'Nitrate', fx: { cMus: 0.76, gamma: 0.55, radius: 1.004, svAdd: -2 }, illustrative: true, source: DIRECTION_SOURCE },
+  bb:      { label: 'Beta-blocker (atenolol)', short: 'β-blocker', fx: { hrAdd: -14, svAdd: 6, radius: 0.99, ees: 0.92 }, illustrative: true, source: DIRECTION_SOURCE },
+  diur:    { label: 'Thiazide diuretic', short: 'Diuretic', fx: { svAdd: -2, radius: 1.006, gamma: 0.95, preload: 0.96 }, illustrative: true, source: DIRECTION_SOURCE },
+  nitrate: { label: 'Organic nitrate', short: 'Nitrate', fx: { cMus: 0.76, gamma: 0.55, radius: 1.004, svAdd: -2, preload: 0.96 }, illustrative: true, source: DIRECTION_SOURCE },
   pe:      { label: 'Vasoconstrictor (phenylephrine)', short: 'Vasoconstrictor', fx: { radius: 0.96, cMus: 1.10, gamma: 1.18 }, illustrative: true, source: DIRECTION_SOURCE }
 };
 
@@ -374,12 +378,18 @@ export const DRUG_KINETICS: Record<string, DrugKinetics> = {
 const ACUTE_SOURCE = 'Illustrative teaching values. Directions: Nichols & Singh 2002; Townsend et al. 2015, Table 1 (vasodilators, β-blockade); standard pharmacology for inotropes, vasopressors and propofol.';
 
 export const ACUTE_DRUGS: Record<string, Drug> = {
-  ntg:        { label: 'Nitroglycerin', short: 'NTG', fx: { cMus: 0.75, gamma: 0.55, radius: 1.01, svAdd: -6 }, illustrative: true, source: ACUTE_SOURCE },
-  phe:        { label: 'Phenylephrine (acute)', short: 'Phenylephrine', fx: { radius: 0.92, cMus: 1.10, gamma: 1.20 }, illustrative: true, source: ACUTE_SOURCE },
-  esmolol:    { label: 'Esmolol', short: 'Esmolol', fx: { hrAdd: -18, svAdd: -4 }, illustrative: true, source: ACUTE_SOURCE },
-  dobutamine: { label: 'Dobutamine', short: 'Dobutamine', fx: { hrAdd: 15, svAdd: 15, radius: 1.03 }, illustrative: true, source: ACUTE_SOURCE },
-  propofol:   { label: 'Propofol', short: 'Propofol', fx: { radius: 1.05, cMus: 0.95, svAdd: -8, hrAdd: -3 }, illustrative: true, source: ACUTE_SOURCE },
-  norepinephrine: { label: 'Norepinephrine', short: 'Norepi', fx: { radius: 0.93, cMus: 1.08, gamma: 1.12, hrAdd: 4, svAdd: 6 }, illustrative: true, source: ACUTE_SOURCE }
+  ntg:        { label: 'Nitroglycerin', short: 'NTG', fx: { cMus: 0.75, gamma: 0.55, radius: 1.01, svAdd: -6, preload: 0.89 }, illustrative: true,
+    source: `${ACUTE_SOURCE} Ventricle (v3): EDV × 0.89, as 0.4 mg sublingual NTG in 20 normal subjects (EDV −11 %; Burggraf & Parker 1974); the preload fall dominates when Ea/Ees < 1 (Haber 1993).` },
+  phe:        { label: 'Phenylephrine (acute)', short: 'Phenylephrine', fx: { radius: 0.92, cMus: 1.10, gamma: 1.20, preload: 1.05 }, illustrative: true,
+    source: `${ACUTE_SOURCE} Ventricle (v3): EDV × 1.05 from venoconstriction (recruited venous volume; Kalmar 2018: SV +11 mL after 2 µg/kg in anaesthesia-induced hypotension). Afterload lowers SV in the ventricle, so the net change depends on the patient (Cannesson 2012).` },
+  esmolol:    { label: 'Esmolol', short: 'Esmolol', fx: { hrAdd: -18, svAdd: -4, ees: 0.70 }, illustrative: true,
+    source: `${ACUTE_SOURCE} Ventricle (v3): Ees × 0.70 (contractility ≈ 30 % lower with IV esmolol by conductance-catheter PV loops; Kass 1993, patients with LV hypertrophy). The slower heart rate raises SV in the ventricle by itself.` },
+  dobutamine: { label: 'Dobutamine', short: 'Dobutamine', fx: { hrAdd: 15, svAdd: 15, radius: 1.03, ees: 1.55 }, illustrative: true,
+    source: `${ACUTE_SOURCE} Ventricle (v3): Ees × 1.55 at 5 µg/kg/min in 10 normal subjects (ESPVR slope +55 %, range 37–85 %; Borow 1982).` },
+  propofol:   { label: 'Propofol', short: 'Propofol', fx: { radius: 1.05, cMus: 0.95, svAdd: -8, hrAdd: -3, preload: 0.88 }, illustrative: true,
+    source: `${ACUTE_SOURCE} Ventricle (v3): EDV × 0.88 (venodilation: mean systemic filling pressure falls; de Wit 2016; LV end-diastolic area falls; Yamaura 2000); Ees unchanged, since human studies find no direct depression at clinical concentrations (Schmidt 1999), unlike dogs (Ees −43 % at high dose; Hettrick 1997).` },
+  norepinephrine: { label: 'Norepinephrine', short: 'Norepi', fx: { radius: 0.93, cMus: 1.08, gamma: 1.12, hrAdd: 4, svAdd: 6, preload: 1.07, ees: 1.10 }, illustrative: true,
+    source: `${ACUTE_SOURCE} Ventricle (v3): EDV × 1.07 (GEDVI +7 %, SVI +15 % with early norepinephrine; Hamzaoui 2010, septic shock) and Ees × 1.10 for β1 inotropy (cardiac function index +6 %, same study).` }
 };
 
 /** Every drug: the 7 v1 long-term drugs plus the 6 acute drugs. */
@@ -395,6 +405,12 @@ export const DRUG_EMAX = { emax: 1.2 } as const;
 /** Illustrative stroke-volume rise when an acute drug lowers HR (longer filling time):
  *  SV × (HR before / HR after)^exponent. Live engine only; v1 long-term drugs are unchanged. */
 export const SV_HR_COUPLING = { exponent: 0.5, illustrative: true } as const;
+
+/** Ventricle (v3): sensitivity of stroke volume to its inputs, d ln SV / d ln x, measured on the
+ *  calibrated study profiles (25–80 y; spread ± 0.03). The live engine uses them to estimate the MAP
+ *  change behind the baroreflex and response modes without extra beat solves, and to turn a response
+ *  mode's stroke-volume target into preload (pacing) or contractility (exercise). */
+export const V3_SV_SENS = { preload: 0.70, ees: 0.46, hr: -0.45, svr: -0.45 } as const;
 
 export const BAROREFLEX = { drug: 'phe', bpmPerMmHg: 0.3, maxFall: 20 } as const;
 
@@ -454,6 +470,20 @@ export const ENGINE = {
 
 /* ---------------- citations ---------------- */
 export const CITATIONS = {
+  Rozenman1984: 'Rozenman Y, Weiss AT, Atlan H, Gotsman MS. Left ventricular function during atrial pacing: a radionuclide angiographic study. Clin Cardiol 1984;7:349–355.',
+  Ludbrook1977: 'Ludbrook PA, Byrne JD, Kurnik PB, McKnight RC. Influence of reduction of preload and afterload by nitroglycerin on left ventricular diastolic pressure-volume relations and relaxation in man. Circulation 1977;56:937–943.',
+  Chantler2008: 'Chantler PD, Lakatta EG, Najjar SS. Arterial-ventricular coupling: mechanistic insights into cardiovascular performance at rest and during exercise. J Appl Physiol 2008;105:1342–1351.',
+  Borow1982: 'Borow KM, Neumann A, Wynne J. Sensitivity of end-systolic pressure-dimension and pressure-volume relations to the inotropic state in humans. Circulation 1982;65:988–997.',
+  Kass1993: 'Kass DA, Wolff MR, Ting CT, et al. Diastolic compliance of hypertrophied ventricle is not acutely altered by pharmacologic agents influencing active processes. Ann Intern Med 1993;119:466–473.',
+  BurggrafParker1974: 'Burggraf GW, Parker JO. Left ventricular volume changes after amyl nitrite and nitroglycerin in man as measured by ultrasound. Circulation 1974;49:136–143.',
+  Haber1993: 'Haber HL, Simek CL, Bergin JD, et al. Bolus intravenous nitroglycerin predominantly reduces afterload in patients with excessive arterial elastance. J Am Coll Cardiol 1993;22:251–257.',
+  deWit2016: 'de Wit F, van Vliet AL, de Wilde RB, et al. The effect of propofol on haemodynamics: cardiac output, venous return, mean systemic filling pressure, and vascular resistances. Br J Anaesth 2016;116:784–789.',
+  Yamaura2000: 'Yamaura K, Hoka S, Okamoto H, et al. Changes in left ventricular end-diastolic area, end-systolic wall stress, and fractional area change during anesthetic induction with propofol or thiamylal. J Anesth 2000;14:138–142.',
+  Schmidt1999: 'Schmidt C, et al. Contractility in humans after coronary artery surgery: echocardiographic assessment with preload-adjusted maximal power. Anesthesiology 1999;91:58–70.',
+  Hettrick1997: 'Hettrick DA, et al. Alterations in canine left ventricular-arterial coupling and mechanical efficiency produced by propofol. Anesthesiology 1997;86:1088–1093.',
+  Kalmar2018: 'Kalmar AF, Allaert S, Pletinckx P, et al. Phenylephrine increases cardiac output by raising cardiac preload in patients with anesthesia induced hypotension. J Clin Monit Comput 2018;32:969–976.',
+  Cannesson2012: 'Cannesson M, Jian Z, Chen G, Vu TQ, Hatib F. Effects of phenylephrine on cardiac output and venous return depend on the position of the heart on the Frank–Starling relationship. J Appl Physiol 2012;113:281–289.',
+  Hamzaoui2010: 'Hamzaoui O, Georger JF, Monnet X, et al. Early administration of norepinephrine increases cardiac preload and cardiac output in septic patients with life-threatening hypotension. Crit Care 2010;14:R142.',
   NE2001: 'Nichols WW, Edwards DG. Arterial elastance and wave reflection augmentation of systolic blood pressure: deleterious effects and implications for therapy. J Cardiovasc Pharmacol Ther 2001;6(1):5–21.',
   NS2002: 'Nichols WW, Singh BM. Augmentation index as a measure of peripheral vascular disease state. Curr Opin Cardiol 2002;17:543–551.',
   T2015a: 'Townsend RR, Black HR, Chirinos JA, et al. Clinical use of pulse wave analysis: proceedings from a symposium sponsored by North American Artery. J Clin Hypertens 2015;17:503–513.',
