@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, PRESETS } from '../src/config/physiology';
 import { simulate } from '../src/model';
-import { FUJIMOTO_2012, LV_FIXED, edpvrForAge, elastanceShape, lvForPatient, simulateLV } from '../src/model/ventricle';
+import { FUJIMOTO_2012, LV_FIXED, V3_FIT, edpvrForAge, elastanceShape, lvForPatient, simulateLV, v3For } from '../src/model/ventricle';
+import { runV3Validation } from '../src/model/validationV3';
 
 const base = { ...DEFAULTS };
 const r = simulateLV(base);
@@ -101,5 +102,27 @@ describe('stage 2: EDPVR, filling and LVEDP', () => {
   });
   it('isovolumic relaxation time in the normal range', () => {
     expect(r.ivrt * 1000).toBeGreaterThan(60); expect(r.ivrt * 1000).toBeLessThan(110);
+  });
+});
+
+describe('stage 3: calibration by age and sex', () => {
+  const v = runV3Validation();
+  it('the fitted targets (SV, Herbert cuff SBP, Janner AIx) are met for all eight profiles', () => {
+    for (const p of v.profiles) for (const c of p.checks.filter(c => c.fitted)) expect(c.verdict, `${p.name}: ${c.what}`).toBe('pass');
+  });
+  it('the fits are stored at the profile ages and interpolate between them', () => {
+    expect(v3For(0, 65).ees).toBe(V3_FIT.male.ees[2]);
+    expect(v3For(1, 55).ees).toBeCloseTo((V3_FIT.female.ees[1] + V3_FIT.female.ees[2]) / 2, 10);
+    expect(v3For(0, 90).radius).toBe(V3_FIT.male.radius[3]);
+  });
+  it('age trends: Ees and dP/dt max rise, τ stays about constant (Chen, Redfield, Zhang & Kovács, Yamakado)', () => {
+    for (const c of v.trends.filter(c => /^(Ees rises|τ with age|dP\/dt max with age)/.test(c.what))) expect(c.verdict, c.what).toBe('pass');
+  });
+  it('known v3 misses are pinned so changes are noticed', () => {
+    expect(v.trends.filter(c => c.verdict !== 'pass').map(c => `${c.what}: ${c.verdict}`)).toEqual([
+      'Ea/Ees with age, 25 → 80 y (men): fail',
+      'MAP after midlife: lowest of 65 / 80 y minus 45 y (men): fail',
+      'Ea/Ees with age, 25 → 80 y (women): near'
+    ]);
   });
 });

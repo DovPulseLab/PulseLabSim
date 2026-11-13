@@ -61,10 +61,32 @@ export interface LVParams {
   rmv: number;       // mitral valve resistance, mmHg·s/mL
   tmaxScale: number; // multiplier on Tmax = 0.2 + 0.15·T
   ks: number;        // ejection effect coefficient, s/mL (Shroff 1985)
+  shape: HillShape;  // activation curve shape
 }
 
-/** Stage-2 fixed values (stage 3 calibrates Ees and timing by age and sex). */
-export const LV_FIXED = { ees: 2.68, v0: 0, rav: 0.0025, rmv: 0.006, tmaxScale: 1.2, ks: 0.0005 } as const;
+/** Double-Hill activation shape (Stergiopulos 1996 defaults: rise centre 0.7, exponent 1.9;
+ *  relaxation centre 1.17, exponent 21.9), x = t / Tmax. */
+export interface HillShape { c1: number; n1: number; c2: number; n2: number; }
+export const STERGIOPULOS: Readonly<HillShape> = { c1: 0.7, n1: 1.9, c2: 1.17, n2: 21.9 };
+const hillRaw = (x: number, h: HillShape) => { const a = Math.pow(x / h.c1, h.n1), b = Math.pow(x / h.c2, h.n2); return (a / (1 + a)) * (1 / (1 + b)); };
+const peakCache = new Map<string, number>();
+function hillPeak(h: HillShape): number {
+  const key = `${h.c1},${h.n1},${h.c2},${h.n2}`; let m = peakCache.get(key);
+  if (m == null) { m = 0; for (let i = 1; i <= 6000; i++) m = Math.max(m, hillRaw(i / 2000, h)); peakCache.set(key, m); }
+  return m;
+}
+/** Normalized activation, peak = 1. */
+export const elastanceShape = (x: number, h: HillShape = STERGIOPULOS): number => x <= 0 ? 0 : hillRaw(x, h) / hillPeak(h);
+export const tMax = (T: number, scale = 1): number => (0.2 + 0.15 * T) * scale;
+
+/** Activation shape and ejection effect fitted (v3 stage 3) for the default adult at 70 bpm, with
+ *  Ees set so SV = 72 mL, to: relaxation τ 40–50 ms (Zhang & Kovács 2009: 42–54 ms), dP/dt max
+ *  1 000–1 500 and −dP/dt −1 200 to −1 800 mmHg/s (Zhang & Kovács 2009), ejection ≈ 300 ms (study
+ *  design; Weissler 294 ms) and v2's AIx and cuff SBP. The relaxation exponent n2 trades τ against
+ *  IVRT and −dP/dt; 15.5 balances them. Result: τ 40 ms, dP/dt max 1 370, −dP/dt −1 300, IVCT 67 ms,
+ *  LVET 305 ms, IVRT 105 ms, AIx 27 % (v2 28), cuff SBP 119 (v2 122). */
+export const V3_SHAPE: Readonly<HillShape> = { c1: 0.55, n1: 1.9, c2: 1.17, n2: 15.5 };
+export const LV_FIXED: Omit<LVParams, 'edv' | 'bsa' | 'pRef' | 'a' | 'edviRef'> = { ees: 2.90, v0: 0, rav: 0.0025, rmv: 0.006, tmaxScale: 1.05, ks: 0.0009, shape: V3_SHAPE };
 
 /** Patient-dependent ventricle: EDPVR and EDV from Fujimoto by age, scaled by BSA. */
 export function lvForPatient(p: Pick<Params, 'age' | 'height' | 'weight'>): LVParams {
@@ -72,11 +94,6 @@ export function lvForPatient(p: Pick<Params, 'age' | 'height' | 'weight'>): LVPa
   return { ...LV_FIXED, bsa, ...ed, edv: ed.edviRef * bsa };
 }
 
-/** Normalized double-Hill activation, peak = 1 at x ≈ 1. */
-const hill = (x: number) => { const a = Math.pow(x / 0.7, 1.9), b = Math.pow(x / 1.17, 21.9); return (a / (1 + a)) * (1 / (1 + b)); };
-const HILL_PEAK = (() => { let m = 0; for (let i = 1; i <= 4000; i++) m = Math.max(m, hill(i / 2000)); return m; })();
-export const elastanceShape = (x: number): number => x <= 0 ? 0 : hill(x) / HILL_PEAK;
-export const tMax = (T: number, scale = 1): number => (0.2 + 0.15 * T) * scale;
 
 export interface LVResult {
   beat: BeatResult;          // arterial solution, index 0 = start of ejection (as v2)
@@ -157,7 +174,7 @@ export function simulateLV(input: Partial<Params>, lvIn: Partial<LVParams> = {},
   const base: Params = { ...DEFAULTS, ...input } as Params;
   const lv: LVParams = { ...lvForPatient(base), ...lvIn };
   const N = PHYS.N, T = 60 / base.hr, dt = T / N, tmax = tMax(T, lv.tmaxScale);
-  const en = Array.from({ length: N }, (_, k) => elastanceShape(k * dt / tmax));
+  const en = Array.from({ length: N }, (_, k) => elastanceShape(k * dt / tmax, lv.shape));
   let sv = 70, d = derive({ ...base, sv });
   let zin = zinTable(d, N), zc = d.zc, pla = 10;
   const pdel = new Float64Array(N).fill(d.map);
@@ -207,4 +224,31 @@ export function eesForSV(input: Partial<Params>, lv: Partial<LVParams>, targetSV
     if (simulateLV(input, { ...lv, ees: mid }).sv < targetSV) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
+}
+
+/* ---------------- stage 3: calibration of the ventricle by age and sex ----------------
+   Fitted at the eight healthy study profiles (HR 70, their heights and weights), with
+   EDV = Fujimoto EDV index × BSA and the EDPVR by age (stage 2):
+     Ees     so stroke volume = the profile's calibrated SV (Maceira 2006 × 0.70 × BSA, as v2)
+     radius  so cuff SBP = Herbert 2014 central SBP + amplification (as v2)
+     Γ       so AIx = Janner 2010 (as v2)
+   Everything else (EF, LVEDP, dP/dt, τ, IVCT, LVET, IVRT, Ea/Ees, DBP, MAP, SVRI) is a
+   prediction, compared with data in runV3Validation(). Nested fit: Ees is re-solved inside
+   every radius and Γ step. Values between ages are interpolated, flat beyond 25–80 y. */
+export const V3_FIT = {
+  ages: [25, 45, 65, 80],
+  male:   { ees: [2.30, 2.76, 3.63, 4.51], radius: [101.5, 100.5, 101, 98.5], gamma: [0.01, 0.18, 0.26, 0.41] },
+  female: { ees: [2.34, 2.78, 3.70, 4.48], radius: [99.5, 96.5, 95.5, 93.5],  gamma: [0.25, 0.42, 0.42, 0.48] }
+} as const;
+const v3k = (ys: readonly number[]) => V3_FIT.ages.map((a, i) => [a, ys[i]] as const);
+export const v3For = (sex: number, age: number) => {
+  const f = sex === 1 ? V3_FIT.female : V3_FIT.male;
+  return { ees: interp(v3k(f.ees), age), radius: interp(v3k(f.radius), age), gamma: interp(v3k(f.gamma), age) };
+};
+
+/** A calibrated healthy patient with the v3 ventricle: v2 calibration for the arteries and SV
+ *  target, then the v3 fits for Ees, radius and Γ. */
+export function simulateCalibrated(p: Params, lvIn: Partial<LVParams> = {}): LVResult {
+  const f = v3For(p.sex, p.age);
+  return simulateLV({ ...p, radius: f.radius, gamma: f.gamma }, { ees: f.ees, ...lvIn });
 }
