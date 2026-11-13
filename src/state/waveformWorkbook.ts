@@ -20,13 +20,13 @@ export function waveformWorkbook(patients: WorkbookPatient[], o: WorkbookOptions
       ['Created', o.created],
       ['Simulator version', o.version],
       ['Sampling rate', `${o.fs} Hz (uniform; Δt = ${round(1000 / o.fs, 4)} ms)`],
-      ['Beats per patient', String(o.beats)],
+      ['Beats per patient', o.beats],
       ['Time origin', 'time 0 = start of ejection (aortic valve opening) of the first beat'],
       ['Synchronization', 'Pressure and flow share one time axis: each row is one synchronized pressure–flow sample at the aortic root.'],
       ['Method', 'The solver computes one periodic steady-state beat on 1024 points per cycle (≈ 1.2 kHz at 70 bpm, 3.1 kHz at 180 bpm). It is resampled here by periodic linear interpolation and repeated, so all beats in a file are identical (the beat shown when you exported, including active drugs).'],
       ['Columns', 'aortic_pressure = central (ascending aortic) pressure; aortic_flow = aortic root flow, mL/s (L/min × 1000/60); forward/backward_pressure = wave separation (P = Pf + Pb); aortic_dPdt = rate of change of aortic pressure; brachial/radial = intra-arterial peripheral pressures (not cuff).'],
       ['Mean values', 'Mean of aortic_flow over one beat × cycle length = stroke volume; mean aortic_pressure = MAP.'],
-      ['Sheets', 'One waveform sheet per patient; "Beat summary" = the simulator metrics for the same beat; "Inputs" = the model inputs used.'],
+      ['Sheets', 'The file opens on "Patient A waveforms" (the data points: one row per sample). Also: "Patient B waveforms", "Beat summary" = the simulator metrics for the same beat, "Inputs" = the model inputs used, and this README.'],
       ['Important', 'Educational model output, not measured patient data. Not a medical device. See the Methods tab for equations and sources.']
     ]
   };
@@ -61,5 +61,5 @@ export function waveformWorkbook(patients: WorkbookPatient[], o: WorkbookOptions
       ...ALL_CONTROLS.map(c => [c.label, c.key, ...patients.map(p => controlText(c, p.params[c.key], p.params))])
     ]
   };
-  return [readme, ...waveSheets, summary, inputs];
+  return [...waveSheets, summary, inputs, readme];   // data first: Excel opens on the first sheet
 }
