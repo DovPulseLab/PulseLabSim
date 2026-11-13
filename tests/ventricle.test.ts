@@ -1,8 +1,8 @@
-/* v3 stage 1: time-varying elastance LV coupled to the v2 arterial model. */
+/* v3 stages 1–2: time-varying elastance LV with EDPVR and mitral filling, coupled to the v2 arterial model. */
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, PRESETS } from '../src/config/physiology';
 import { simulate } from '../src/model';
-import { LV_DEFAULTS, elastanceShape, simulateLV } from '../src/model/ventricle';
+import { FUJIMOTO_2012, LV_FIXED, edpvrForAge, elastanceShape, lvForPatient, simulateLV } from '../src/model/ventricle';
 
 const base = { ...DEFAULTS };
 const r = simulateLV(base);
@@ -39,11 +39,11 @@ describe('coupled beat', () => {
 
 describe('ventricular physiology', () => {
   it('Frank–Starling: more preload, more stroke volume and dP/dt', () => {
-    const hi = simulateLV(base, { edv: 155 });
+    const hi = simulateLV(base, { edv: r.lvp.edv * 1.15 });
     expect(hi.sv).toBeGreaterThan(r.sv + 5); expect(hi.dpdtMax).toBeGreaterThan(r.dpdtMax);
   });
   it('contractility: higher Ees raises SV and dP/dt max', () => {
-    const hi = simulateLV(base, { ees: LV_DEFAULTS.ees * 1.3 });
+    const hi = simulateLV(base, { ees: LV_FIXED.ees * 1.3 });
     expect(hi.sv).toBeGreaterThan(r.sv); expect(hi.dpdtMax).toBeGreaterThan(r.dpdtMax * 1.15);
   });
   it('afterload: narrower arterioles lower SV and raise end-systolic pressure', () => {
@@ -51,7 +51,7 @@ describe('ventricular physiology', () => {
     expect(hi.sv).toBeLessThan(r.sv - 3); expect(hi.lvesp).toBeGreaterThan(r.lvesp + 5);
   });
   it('coupling and relaxation in published healthy ranges', () => {
-    const eaEes = r.ea / LV_DEFAULTS.ees;
+    const eaEes = r.ea / LV_FIXED.ees;
     expect(eaEes).toBeGreaterThan(0.5); expect(eaEes).toBeLessThan(0.9);            // Chen 1998; Redfield 2005 ≈ 0.6–0.7
     expect(r.dpdtMin).toBeLessThan(-1200); expect(r.dpdtMin).toBeGreaterThan(-2000); // Zhang & Kovács 2009
     expect(r.ef).toBeGreaterThan(0.5); expect(r.ef).toBeLessThan(0.7);
@@ -67,5 +67,39 @@ describe('agreement with v2 (same arteries, ventricle instead of prescribed flow
     expect(Math.abs(m.AIx - v2.AIx)).toBeLessThan(5);
     expect(Math.abs(r.sv - DEFAULTS.sv)).toBeLessThan(3);
     expect(Math.abs(Math.max(...r.beat.q) - Math.max(...simulate(base).q))).toBeLessThan(30);
+  });
+});
+
+describe('stage 2: EDPVR, filling and LVEDP', () => {
+  it('EDPVR passes through each Fujimoto 2012 age group (PCWP at its EDV index)', () => {
+    FUJIMOTO_2012.age.forEach((age, i) => {
+      const e = edpvrForAge(age);
+      expect(e.pRef).toBeCloseTo(FUJIMOTO_2012.pcwp[i], 10); expect(e.edviRef).toBeCloseTo(FUJIMOTO_2012.edvi[i], 10); expect(e.a).toBeCloseTo(FUJIMOTO_2012.a[i], 10);
+    });
+  });
+  it('with the age-typical EDV, LVEDP and LA pressure equal that age\'s measured filling pressure', () => {
+    for (const age of [28, 57]) {
+      const x = simulateLV({ ...base, age });
+      expect(x.lvedp).toBeCloseTo(edpvrForAge(age).pRef, 0);
+      expect(x.pla).toBeCloseTo(x.lvedp, 0);
+    }
+  });
+  it('LVEDP is calculated from preload: more volume, higher LVEDP along the exponential EDPVR', () => {
+    const lo = simulateLV(base, { edv: r.lvp.edv * 0.9 }), hi = simulateLV(base, { edv: r.lvp.edv * 1.1 });
+    expect(lo.lvedp).toBeLessThan(r.lvedp); expect(hi.lvedp).toBeGreaterThan(r.lvedp);
+    expect(hi.lvedp - r.lvedp).toBeGreaterThan(r.lvedp - lo.lvedp);       // convex (stiffer at higher volume)
+  });
+  it('a stiffer ventricle (older EDPVR constant) needs a higher filling pressure for the same volume', () => {
+    const young = lvForPatient({ ...base, age: 28 }), stiff = simulateLV(base, { ...young, a: 0.068 }), soft = simulateLV(base, { ...young });
+    expect(stiff.lvedp).toBeCloseTo(soft.lvedp, 0);                       // same reference point…
+    const stiffHi = simulateLV(base, { ...young, a: 0.068, edv: young.edv * 1.15 }), softHi = simulateLV(base, { ...young, edv: young.edv * 1.15 });
+    expect(stiffHi.lvedp).toBeGreaterThan(softHi.lvedp + 1);               // …but steeper above it
+  });
+  it('the beat is periodic and the valves never open together', () => {
+    expect(Math.abs(r.vol[0] - r.vol[r.vol.length - 1])).toBeLessThan(1.5);
+    for (let k = 0; k < r.qm.length; k++) expect(r.qm[k] > 0 && r.beat.q[k] > 0).toBe(false);
+  });
+  it('isovolumic relaxation time in the normal range', () => {
+    expect(r.ivrt * 1000).toBeGreaterThan(60); expect(r.ivrt * 1000).toBeLessThan(110);
   });
 });
