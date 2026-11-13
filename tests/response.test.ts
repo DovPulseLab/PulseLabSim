@@ -50,7 +50,6 @@ describe('physiologic response modes', () => {
 describe('Wilkinson 2000 pacing benchmark', () => {
   it('verdicts are pinned so changes are noticed', () => {
     const w = runStudyValidation().wilkinson;
-    // v2.7: AIx change −8.9 % vs −15.3 % measured (was −9.6 %, 'near')
-    expect(w.map(c => c.verdict)).toEqual(['pass', 'pass', 'fail', 'fail', 'fail', 'fail', 'fail', 'near']);
+    expect(w.map(c => c.verdict)).toEqual(['pass', 'pass', 'fail', 'fail', 'near', 'fail', 'fail', 'near']);
   });
 });

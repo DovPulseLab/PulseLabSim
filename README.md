@@ -49,12 +49,10 @@ Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour 
 
 ### New in v2.7 (age evidence recalibration)
 
-- **Stroke volume from Doppler data**: calibration now uses WASE 2021 Doppler stroke-volume index
-  by sex and age group (flat with age), replacing Maceira 2006 CMR × an unsourced 0.70 factor.
 - **The age slider calibrates SVR and Γ too**: arteriolar radius and Γ follow age curves through the
   refitted healthy study profiles, so any age gives a calibrated healthy patient. Inputs outside
   their data's age range are held flat and listed as extrapolated.
-- **Validation §11 and new profile rows**: cardiac index (WASE), SVR index (Redfield 2005),
+- **Validation §11 and new profile rows**: stroke volume and cardiac index vs WASE Doppler, SVR index (Redfield 2005),
   reflected-wave timing (Phan 2016), Zc across methods, and a MAP-plateau check (a known miss).
 - **Methods §16**: data provenance for every age-dependent input and where the evidence disagrees.
 
@@ -62,7 +60,7 @@ Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour 
 
 - **Patient inputs**: sex, age, height and weight. Changing any of them recalculates aortic
   diameter (Campens 2014), aortic PWV (Reference Values for Arterial Stiffness Collaboration 2010)
-  and stroke volume (Maceira 2006; WASE 2021 since v2.7); the sliders can still be adjusted afterwards.
+  and stroke volume (Maceira 2006); the sliders can still be adjusted afterwards.
 - **Eight healthy study profiles**: men and women at 25, 45, 65 and 80 y, fitted to central SBP
   (Herbert 2014) and AIx (Janner 2010) and checked against other reference data on the Validation tab.
 - **Ejection duration in ms**, starting at 300 ms and following heart rate (sex-specific Weissler lines).

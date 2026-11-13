@@ -8,7 +8,7 @@
    model was not fitted to.
    ===================================================================== */
 import { DEFAULTS, LAWS, MODEL, PRESETS, RESPONSE, STUDY_PROFILES, STUDY_TARGETS, baroFraction, weisslerMs, type Params } from '../config/physiology';
-import { SVI_DOPPLER_SD, WASE_DOPPLER_CI, WASE_GROUPS, aortaDiameter, bsaDuBois, interp, pwvNormal, svIndex } from './calibrate';
+import { CALIB, SVI_DOPPLER_SD, WASE_DOPPLER_CI, WASE_GROUPS, aortaDiameter, bsaDuBois, interp, pwvNormal, svIndex, svIndexDoppler } from './calibrate';
 import { diastolicDecay } from './indices';
 import { buildCycle } from './cycle';
 import { applyDrugEffects, type DrugEvent } from '../engine/kinetics';
@@ -110,8 +110,10 @@ export function runStudyValidation(): StudyReport {
         verdict: Math.abs(m.devCSBP - tgt.cSBP) <= 4 ? 'pass' : Math.abs(m.devCSBP - tgt.cSBP) <= 8 ? 'near' : 'fail' },
       { kind: 'data', what: 'Cuff DBP', model: `${m.bDBP.toFixed(0)} mmHg`, reference: `${tgt.cuffDBP} mmHg (normotensive mean, ${sp.age < 40 ? '18–39' : sp.age < 60 ? '40–59' : '≥ 60'} y)`, source: 'Wright 2011 (NHANES)',
         verdict: Math.abs(m.bDBP - tgt.cuffDBP!) <= 4 ? 'pass' : Math.abs(m.bDBP - tgt.cuffDBP!) <= 8 ? 'near' : 'fail' },
-      { kind: 'fitted', what: 'Stroke-volume index', model: `${(p.sv / bsa).toFixed(1)} mL/m²`, reference: `${svIndex(sp.sex, sp.age).toFixed(1)} mL/m² (WASE Doppler, interpolated between group means; ${WASE_GROUPS[waseIdx(sp.age)]} y SD ${(sp.sex ? SVI_DOPPLER_SD.female : SVI_DOPPLER_SD.male)[waseIdx(sp.age)]})`, source: 'Patel 2021 (WASE)', fitted: true,
+      { kind: 'fitted', what: 'Stroke-volume index (calibration)', model: `${(p.sv / bsa).toFixed(1)} mL/m²`, reference: `${svIndex(sp.sex, sp.age).toFixed(1)} mL/m² (Maceira CMR × ${CALIB.svScale})`, source: 'Maceira 2006', fitted: true,
         verdict: Math.abs(p.sv / bsa - svIndex(sp.sex, sp.age)) <= 1 ? 'pass' : 'fail' },
+      { kind: 'data', what: 'Stroke-volume index vs Doppler', model: `${(p.sv / bsa).toFixed(1)} mL/m²`, reference: `${svIndexDoppler(sp.sex, sp.age).toFixed(1)} ± ${(sp.sex ? SVI_DOPPLER_SD.female : SVI_DOPPLER_SD.male)[waseIdx(sp.age)]} mL/m² (Doppler, ${WASE_GROUPS[waseIdx(sp.age)]} y)`, source: 'Patel 2021 (WASE)',
+        verdict: band(p.sv / bsa, svIndexDoppler(sp.sex, sp.age) - (sp.sex ? SVI_DOPPLER_SD.female : SVI_DOPPLER_SD.male)[waseIdx(sp.age)], svIndexDoppler(sp.sex, sp.age) + (sp.sex ? SVI_DOPPLER_SD.female : SVI_DOPPLER_SD.male)[waseIdx(sp.age)], 2) },
       { kind: 'data', what: 'Cardiac index (HR 70)', model: `${(m.co / bsa).toFixed(2)} L/min/m²`, reference: `${(sp.sex ? WASE_DOPPLER_CI.female : WASE_DOPPLER_CI.male)[waseIdx(sp.age)]} ± 0.6 L/min/m² (Doppler, ${WASE_GROUPS[waseIdx(sp.age)]} y; their HR ≈ 65–70)`, source: 'Patel 2021 (WASE)',
         verdict: band(m.co / bsa, (sp.sex ? WASE_DOPPLER_CI.female : WASE_DOPPLER_CI.male)[waseIdx(sp.age)] - 0.6, (sp.sex ? WASE_DOPPLER_CI.female : WASE_DOPPLER_CI.male)[waseIdx(sp.age)] + 0.6, 0.3) },
       ...(sp.age >= 45 ? [(() => { const ref = interp(sp.sex ? REDFIELD_SVRI.female : REDFIELD_SVRI.male, sp.age), svri = m.svrDyn * bsa, dev = svri / ref - 1;
