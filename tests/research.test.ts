@@ -51,3 +51,16 @@ describe('research workbook', () => {
     expect(b[0]).toBe(0x50); expect(b[1]).toBe(0x4b);
   });
 });
+
+describe('research choices', () => {
+  it('both sexes: each age for each sex', () => {
+    const r = runResearch({ ...DEFAULT_RESEARCH, sexes: [0, 1], ages: [40], hrs: [70], modes: [0] });
+    expect(r.patients.map(p => p.id)).toEqual(['M40', 'F40']);
+    expect(r.runs.map(x => x.sex)).toEqual(['male', 'female']);
+  });
+  it('chosen columns and sheets only (ID columns always)', () => {
+    const sh = researchWorkbook(patients, runs, { fs: 250, created: 't', version: 'v3', options: o, columns: ['EF', 'LV_dPdt_max'], profiles: false, waveforms: false });
+    expect(sh.map(s => s.name)).toEqual(['Results', 'README']);
+    expect(sh[0].rows[0]).toEqual(['patient', 'sex', 'age', 'mode', 'heart_rate', 'EF', 'LV_dPdt_max']);
+  });
+});

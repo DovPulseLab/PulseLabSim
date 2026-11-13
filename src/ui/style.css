@@ -425,6 +425,8 @@ body.present .bottom { grid-template-columns: minmax(0, 1fr); }
 .rs-grid { display: grid; grid-template-columns: max-content 1fr; gap: 10px 14px; align-items: center; margin: 12px 0; }
 .rs-grid > label { font-weight: 600; color: var(--ink-2); font-size: .9em; }
 .rs-grid input[type=number] { width: 4.5em; }
+#rsCols { display: flex; flex-wrap: wrap; gap: 4px 0; margin-bottom: 6px; }
+#rsCols .chk { min-width: 15em; }
 .rs-grid .chk { margin-right: 12px; font-weight: 400; white-space: nowrap; }
 .rs-bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; max-width: 420px; }
 .rs-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .1s; }

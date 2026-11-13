@@ -23,7 +23,7 @@ export const RESEARCH_MODES: { resp: number; label: string }[] = [
 ];
 
 export interface ResearchOptions {
-  sex: number;              // 0 men, 1 women
+  sexes: readonly number[]; // 0 men, 1 women (either or both)
   ages: readonly number[];
   hrs: readonly number[];
   modes: readonly number[]; // resp values
@@ -31,7 +31,7 @@ export interface ResearchOptions {
   hrRest: number;           // bpm, the resting rate the response modes are anchored to
 }
 export const DEFAULT_RESEARCH: ResearchOptions = {
-  sex: 0, ages: RESEARCH_AGES, hrs: RESEARCH_HRS, modes: RESEARCH_MODES.map(m => m.resp), heart: 1, hrRest: DEFAULTS.hrRest
+  sexes: [0], ages: RESEARCH_AGES, hrs: RESEARCH_HRS, modes: RESEARCH_MODES.map(m => m.resp), heart: 1, hrRest: DEFAULTS.hrRest
 };
 
 export interface ResearchPatient {
@@ -42,7 +42,7 @@ export interface ResearchPatient {
   note: string;             // provenance of the inputs
 }
 export interface ResearchRun {
-  patient: string; age: number; mode: string; hr: number;
+  patient: string; sex: string; age: number; mode: string; hr: number;
   beat: BeatResult;
   clamped: string[];        // inputs held at a slider limit by the response mode
 }
@@ -66,10 +66,10 @@ export function researchPatient(sex: number, age: number, heart: number, hrRest:
 
 /** All runs, in order patient → mode → HR. `onProgress` lets a caller yield between runs. */
 export function* researchRuns(o: ResearchOptions): Generator<{ done: number; total: number; patient?: ResearchPatient; run?: ResearchRun }> {
-  const total = o.ages.length * o.modes.length * o.hrs.length;
+  const total = o.sexes.length * o.ages.length * o.modes.length * o.hrs.length;
   let done = 0;
-  for (const age of o.ages) {
-    const pt = researchPatient(o.sex, age, o.heart, o.hrRest);
+  for (const sex of o.sexes) for (const age of o.ages) {
+    const pt = researchPatient(sex, age, o.heart, o.hrRest);
     yield { done, total, patient: pt };
     for (const resp of o.modes) {
       const mode = RESEARCH_MODES.find(m => m.resp === resp)?.label ?? `mode ${resp}`;
@@ -77,7 +77,7 @@ export function* researchRuns(o: ResearchOptions): Generator<{ done: number; tot
         const e = applyDrugEffects({ ...pt.params, hr, resp }, [], 0);
         const beat = simulate(e.params);
         done++;
-        yield { done, total, run: { patient: pt.id, age, mode, hr, beat, clamped: e.clamped } };
+        yield { done, total, run: { patient: pt.id, sex: sex ? 'female' : 'male', age, mode, hr, beat, clamped: e.clamped } };
       }
     }
   }
@@ -92,7 +92,7 @@ export function runResearch(o: ResearchOptions = DEFAULT_RESEARCH): { patients: 
 
 /** Columns of the results sheet: header, unit, value. */
 export const RESULT_COLUMNS: [string, string, (r: ResearchRun) => number | string][] = [
-  ['patient', '', r => r.patient], ['age', 'y', r => r.age], ['mode', '', r => r.mode], ['heart_rate', 'bpm', r => r.hr],
+  ['patient', '', r => r.patient], ['sex', '', r => r.sex], ['age', 'y', r => r.age], ['mode', '', r => r.mode], ['heart_rate', 'bpm', r => r.hr],
   ['cuff_SBP', 'mmHg', r => r.beat.m.bSBP], ['cuff_DBP', 'mmHg', r => r.beat.m.bDBP],
   ['central_SBP', 'mmHg', r => r.beat.m.Ps], ['central_DBP', 'mmHg', r => r.beat.m.Pd],
   ['central_PP', 'mmHg', r => r.beat.m.PP], ['augmentation_pressure_AP', 'mmHg', r => r.beat.m.AP],
@@ -104,6 +104,16 @@ export const RESULT_COLUMNS: [string, string, (r: ResearchRun) => number | strin
   ['SVR', 'dyn·s·cm⁻⁵', r => r.beat.m.svrDyn], ['EDV', 'mL', r => r.beat.m.edv], ['ESV', 'mL', r => r.beat.m.esv],
   ['inputs_at_slider_limit', '', r => r.clamped.join(' ')]
 ];
+
+/** Columns always written (they identify the row). */
+export const ID_COLUMNS = ['patient', 'sex', 'age', 'mode', 'heart_rate'];
+/** Optional output columns with a plain-language label for the checkboxes. */
+export const OUTPUT_LABELS: Record<string, string> = {
+  cuff_SBP: 'Cuff SBP', cuff_DBP: 'Cuff DBP', central_SBP: 'Central SBP', central_DBP: 'Central DBP', central_PP: 'Central PP',
+  augmentation_pressure_AP: 'Augmentation pressure (AP)', AIx: 'AIx (%)', tau_RC: 'τ = R·C (s)', ejection_duration: 'Ejection duration',
+  EF: 'EF', LV_dPdt_max: 'LV dP/dt max', LVEDP: 'LVEDP', LVESP: 'LVESP', MAP: 'MAP', stroke_volume: 'Stroke volume',
+  cardiac_output: 'Cardiac output', SVR: 'SVR', EDV: 'EDV', ESV: 'ESV', inputs_at_slider_limit: 'Inputs held at a slider limit'
+};
 
 /** Columns of the patient-profile sheet (resting, Independent, HR = hrRest). */
 export const PROFILE_ROWS: [string, string, (p: ResearchPatient) => number | string][] = [

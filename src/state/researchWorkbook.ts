@@ -2,13 +2,19 @@
    profiles at rest, synchronized aortic pressure/flow per patient at a fixed sampling rate,
    and a README last. Pure: takes the runs, returns sheets. */
 import { periodicInterp } from '../model/waveformExport';
-import { PACING_NOTE, PROFILE_ROWS, RESULT_COLUMNS, type ResearchOptions, type ResearchPatient, type ResearchRun } from '../model/research';
+import { ID_COLUMNS, PACING_NOTE, PROFILE_ROWS, RESULT_COLUMNS, type ResearchOptions, type ResearchPatient, type ResearchRun } from '../model/research';
 import type { Cell, Sheet } from './xlsx';
 
 const round = (v: number, d: number) => { const k = 10 ** d; return Math.round(v * k) / k; };
 const num = (v: number | string, d = 3): Cell => typeof v === 'number' ? (Number.isFinite(v) ? round(v, d) : '') : v;
 
-export interface ResearchWorkbookOptions { fs: number; created: string; version: string; options: ResearchOptions; }
+export interface ResearchWorkbookOptions {
+  fs: number; created: string; version: string; options: ResearchOptions;
+  /** output columns to include (ID columns always); default all */
+  columns?: readonly string[];
+  profiles?: boolean;   // default true
+  waveforms?: boolean;  // default true
+}
 
 /** One beat per run, resampled at fs (Hz). Time 0 = start of ejection. */
 function waveRows(run: ResearchRun, fs: number): Cell[][] {
@@ -24,10 +30,12 @@ function waveRows(run: ResearchRun, fs: number): Cell[][] {
 
 export function researchWorkbook(patients: ResearchPatient[], runs: ResearchRun[], o: ResearchWorkbookOptions): Sheet[] {
   const lvOn = o.options.heart === 1;
+  const want = o.columns ? new Set(o.columns) : null;
+  const cols = RESULT_COLUMNS.filter(([n]) => ID_COLUMNS.includes(n) || !want || want.has(n));
   const results: Sheet = {
-    name: 'Results', headerRows: 2, widths: RESULT_COLUMNS.map(([n]) => Math.max(10, Math.min(18, n.length + 2))),
-    rows: [RESULT_COLUMNS.map(c => c[0]), RESULT_COLUMNS.map(c => c[1]),
-      ...runs.map(r => RESULT_COLUMNS.map(([name, , get]) => num(get(r), name === 'tau_RC' ? 4 : 2)))]
+    name: 'Results', headerRows: 2, widths: cols.map(([n]) => Math.max(10, Math.min(18, n.length + 2))),
+    rows: [cols.map(c => c[0]), cols.map(c => c[1]),
+      ...runs.map(r => cols.map(([name, , get]) => num(get(r), name === 'tau_RC' ? 4 : 2)))]
   };
   const profiles: Sheet = {
     name: 'Patient profiles', headerRows: 1, widths: [32, 16, ...patients.map(() => 22)],
@@ -47,7 +55,7 @@ export function researchWorkbook(patients: ResearchPatient[], runs: ResearchRun[
       ['Pulse Lab Simulator: research run', ''],
       ['Created', o.created], ['Simulator version', o.version],
       ['Heart model', lvOn ? 'Ventricle (v3): stroke volume, EF, dP/dt, LVEDP and LVESP are outputs of the elastance ventricle' : 'Fixed flow (v2): LV columns are blank'],
-      ['Patients', patients.map(p => p.label).join('; ')],
+      ['Patients', patients.map(p => `${p.id} = ${p.label}`).join('; ')],
       ['Heart rates', `${o2.hrs.join(', ')} bpm`], ['Modes', 'Independent, Pacing, Physiologic (see below)'],
       ['Resting heart rate', `${o2.hrRest} bpm: the profile values are at this rate, and the Pacing relation is anchored to it`],
       ['Independent', 'Heart rate changes alone; every other input is held. With the ventricle, stroke volume still responds to the shorter cycle.'],
@@ -60,5 +68,5 @@ export function researchWorkbook(patients: ResearchPatient[], runs: ResearchRun[
       ['Important', 'Educational model output, not measured patient data. Not a medical device. See the Methods and Validation tabs for equations, sources and known misses.']
     ]
   };
-  return [results, profiles, ...waves, readme];
+  return [results, ...(o.profiles === false ? [] : [profiles]), ...(o.waveforms === false ? [] : waves), readme];
 }
