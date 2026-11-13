@@ -420,3 +420,12 @@ body.present .bottom { grid-template-columns: minmax(0, 1fr); }
 .kind.k-fit { border-color: var(--fwd); color: var(--fwd); }
 .kind.k-typ { color: var(--ink-3); }
 .kind.k-con { color: var(--ink-3); border-style: dashed; }
+
+/* Research tab */
+.rs-grid { display: grid; grid-template-columns: max-content 1fr; gap: 10px 14px; align-items: center; margin: 12px 0; }
+.rs-grid > label { font-weight: 600; color: var(--ink-2); font-size: .9em; }
+.rs-grid input[type=number] { width: 4.5em; }
+.rs-grid .chk { margin-right: 12px; font-weight: 400; white-space: nowrap; }
+.rs-bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; max-width: 420px; }
+.rs-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .1s; }
+@media (max-width: 700px) { .rs-grid { grid-template-columns: 1fr; } }

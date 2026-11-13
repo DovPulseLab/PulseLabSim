@@ -26,6 +26,7 @@ import { beatSim, buildSim, renderSim, tickSim } from './ui/tabs/sim';
 import { beatCycle, buildCycleTab, stepMs, tickCycle, toggleCyclePlay } from './ui/tabs/cycle';
 import { renderMethods, renderValidation } from './ui/tabs/static';
 import { buildSweep, renderSweep, stepSweep } from './ui/tabs/sweep';
+import { buildResearch } from './ui/tabs/research';
 import { buildTrend, renderTrend } from './ui/trend';
 
 initTheme();
@@ -44,7 +45,7 @@ const ctx: Ctx = {
 };
 
 buildRail(ctx); buildCards(); buildTrend(ctx); buildDrawer();
-buildSim(ctx); buildCycleTab(ctx); buildCmp(ctx); buildLearn(ctx); buildSweep(ctx); buildImp(ctx);
+buildSim(ctx); buildCycleTab(ctx); buildCmp(ctx); buildLearn(ctx); buildSweep(ctx); buildImp(ctx); buildResearch(ctx);
 renderLesson();
 
 /* ---------- rendering ---------- */
@@ -194,7 +195,7 @@ document.addEventListener('keydown', e => {
   if (mod || e.altKey || typing || !$('#startOverlay').hidden) return;
   // range sliders keep arrow keys; other keys still work while a slider has focus
   const k = e.key;
-  if (k >= '1' && k <= '8') { store.dispatch({ type: 'setTab', tab: TABS[Number(k) - 1] }); e.preventDefault(); return; }
+  if (k >= '1' && k <= '9') { store.dispatch({ type: 'setTab', tab: TABS[Number(k) - 1] }); e.preventDefault(); return; }
   if (ctx.tab() === 'cycle') {
     // Cardiac cycle tab: Space / K play-pause the cycle; , and . step 1 ms (Shift: 10 ms)
     if (k === ' ' && t.matches('button, a, summary, [role=button]')) return;

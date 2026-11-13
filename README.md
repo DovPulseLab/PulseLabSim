@@ -47,6 +47,11 @@ Also: drugs as bolus or infusion events with onset/offset (13 drugs), guided cas
 and scoring, pin baseline (`B`), undo/redo, shareable links (Copy link), exports (PNG, CSV, JSON),
 Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour (`H`).
 
+### Research tab (v3.1)
+
+- Tab 9, **Research**: runs healthy adults (default men of 20, 40, 60 and 80 y; ages and sex selectable) across a heart-rate grid (default 60–120 bpm in steps of 10) in Independent, Pacing and Physiologic modes, with the Ventricle (v3) or Fixed flow (v2) heart.
+- Downloads one Excel workbook: **Results** (one row per patient × mode × heart rate: cuff BP, central BP, central PP, AP, AIx, τ = R·C, ejection duration, EF, LV dP/dt max, LVEDP, LVESP, MAP, SV, CO, SVR, EDV, ESV), **Patient profiles** (resting SV, SVR, PWV, aortic diameter, calibrated inputs), one **waveform** sheet per patient (aortic pressure and flow, plus LV pressure and volume, at 200–1000 Hz) and a README.
+
 ### New in v3 (left ventricle)
 
 - **Heart model** switch in the rail: *Fixed flow (v2)* (default, unchanged) or *Ventricle (v3)*, a time-varying elastance left ventricle (double-Hill activation, ejection effect, EDPVR by age from Fujimoto 2012) coupled to the same arterial impedance. New inputs: Ees, preload, LV stiffness.
