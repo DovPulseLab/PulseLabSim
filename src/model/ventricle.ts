@@ -5,7 +5,10 @@
    LV pressure (active + passive, stage 2):
        P_LV = [en(t) · Ees · (V − V0)  +  (1 − en(t)) · P_ED(V)] · (1 − ks·Q_out)
    en(t)  normalized double-Hill activation (Stergiopulos et al. 1996),
-          peak 1 at Tmax = (0.2 + 0.15 · cycle length) × tmaxScale
+          peak 1 at Tmax = (0.2 + 0.15 · T70) × tmaxScale × LVET(HR) / LVET(70),
+          LVET = Weissler LVET with the v2 limits (≥ 150 ms, ≤ 60 % of the
+          cycle), so systole shortens with heart rate as v2's ejection does
+          and relaxation still finishes before the next beat at 180 bpm
    P_ED   end-diastolic pressure–volume relation (EDPVR), exponential in
           volume index:  P_ED(V) = Pref · exp(a · (V/BSA − EDVIref))
           with Pref, a and EDVIref from Fujimoto et al. 2012 by age (healthy
@@ -27,10 +30,10 @@
    Internal time 0 = onset of contraction; the arterial output is rotated so
    index 0 = start of ejection, as in v2.
    ===================================================================== */
-import { DEFAULTS, PHYS, type Params } from '../config/physiology';
+import { DEFAULTS, MODEL, PHYS, type Params } from '../config/physiology';
 import { bsaDuBois, interp, registerV3Fits } from './calibrate';
 import { cx, type Cx } from './complex';
-import { derive, type Derived } from './derive';
+import { derive, weisslerLVET, type Derived } from './derive';
 import { fft } from './fft';
 import { inputImpedance, simulateWithFlow, type BeatResult } from './solve';
 
@@ -77,7 +80,14 @@ function hillPeak(h: HillShape): number {
 }
 /** Normalized activation, peak = 1. */
 export const elastanceShape = (x: number, h: HillShape = STERGIOPULOS): number => x <= 0 ? 0 : hillRaw(x, h) / hillPeak(h);
-export const tMax = (T: number, scale = 1): number => (0.2 + 0.15 * T) * scale;
+/** Time of peak activation, s. Stergiopulos' 0.2 + 0.15·T at 70 bpm, scaled with heart rate by the
+ *  Weissler LVET (clamped as in v2: ≥ etMin, ≤ etMaxFrac of the cycle). Before v3 stage 5 Tmax was
+ *  0.2 + 0.15·T at every rate, which left the ventricle partly contracted at the next beat above
+ *  ≈ 130 bpm (filling pressure 21 mmHg at 140 bpm, 60 mmHg at 180). Identical at 70 bpm. */
+export const tMax = (T: number, scale = 1, sex = 0): number => {
+  const hr = 60 / T, lvet = (h: number) => Math.min(Math.max(weisslerLVET(h, sex), MODEL.etMin), MODEL.etMaxFrac * 60 / h);
+  return (0.2 + 0.15 * (60 / 70)) * scale * lvet(hr) / lvet(70);
+};
 
 /** Activation shape and ejection effect fitted (v3 stage 3) for the default adult at 70 bpm, with
  *  Ees set so SV = 72 mL, to: relaxation τ 40–50 ms (Zhang & Kovács 2009: 42–54 ms), dP/dt max
@@ -175,9 +185,11 @@ function solvePLA(lv: LVParams, en: number[], pdel: Float64Array, zc: number, dt
 export function simulateLV(input: Partial<Params>, lvIn: Partial<LVParams> = {}, opts: { maxIter?: number; tol?: number } = {}): LVResult {
   const base: Params = { ...DEFAULTS, ...input } as Params;
   const lv: LVParams = { ...lvForPatient(base), ...lvIn };
-  const N = PHYS.N, T = 60 / base.hr, dt = T / N, tmax = tMax(T, lv.tmaxScale);
+  const N = PHYS.N, T = 60 / base.hr, dt = T / N, tmax = tMax(T, lv.tmaxScale, base.sex);
   const en = Array.from({ length: N }, (_, k) => elastanceShape(k * dt / tmax, lv.shape));
-  let sv = 70, d = derive({ ...base, sv });
+  // start near a resting cardiac output (≈ 5 L/min), not a fixed SV: at high rates a fixed 70 mL implies an
+  // aortic pressure a small ventricle cannot open the valve against
+  let sv = Math.min(70, 5000 / base.hr), d = derive({ ...base, sv });
   let zin = zinTable(d, N), zc = d.zc, pla = 10;
   const pdel = new Float64Array(N).fill(d.map);
   let pass!: Pass, it = 0, converged = false;
@@ -185,6 +197,10 @@ export function simulateLV(input: Partial<Params>, lvIn: Partial<LVParams> = {},
   for (it = 1; it <= maxIter; it++) {
     const s = solvePLA(lv, en, pdel, zc, dt, pla); pla = s.pla; pass = s.pass;
     let tot = 0; for (let k = 0; k < N; k++) tot += pass.q[k] * dt;
+    if (tot < 0.5) {   // no ejection against this pressure: lower the arterial guess and try again
+      for (let k = 0; k < N; k++) pdel[k] *= 0.7;
+      continue;
+    }
     sv = tot; d = derive({ ...base, sv }); zin = zinTable(d, N); zc = d.zc;
     const pao = pressureFromFlow(pass.q, zin);
     let diff = 0;

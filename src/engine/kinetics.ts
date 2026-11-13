@@ -3,10 +3,11 @@
    combine in log space (factor^E multiplied), additions scale with E, then inputs are clamped to the slider ranges. Phenylephrine adds a
    baroreflex fall in HR. HR falls caused by acute drugs raise SV slightly (illustrative). All pure. */
 import {
-  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_EMAX, DRUG_KINETICS, MODEL, RESPONSE, SV_HR_COUPLING, baroFraction, exerciseMapSlope, exerciseSvFactor,
+  ALL_CONTROLS, ALL_DRUGS, BAROREFLEX, DRUG_EMAX, DRUG_KINETICS, MODEL, RESPONSE, SV_HR_COUPLING, V3_SV_SENS, baroFraction, exerciseMapSlope, exerciseSvFactor,
   type DrugMode, type Params, type ParamKey
 } from '../config/physiology';
 import { derive } from '../model/derive';
+import { simulate } from '../model/solve';
 
 export interface DrugEvent {
   id: number;
@@ -82,6 +83,18 @@ export interface ResponseEffect {
 /** SVR scale ↔ arteriolar radius (SVR ∝ radius⁻⁴). */
 const radiusForSvr = (radius: number, svrFactor: number) => radius * Math.pow(svrFactor, -0.25);
 
+/** Ventricle (v3): stroke volume of `p` relative to `ref`, from the measured sensitivities (V3_SV_SENS).
+ *  Used only to estimate MAP for the baroreflex and response modes; the beat itself is solved in full. */
+export function v3SvRatio(p: Params, ref: Params): number {
+  const S = V3_SV_SENS;
+  return Math.pow(p.preload / ref.preload, S.preload) * Math.pow(p.ees / ref.ees, S.ees)
+    * Math.pow(p.hr / ref.hr, S.hr) * Math.pow(Math.pow(ref.radius / p.radius, 4), S.svr);
+}
+/** MAP estimate. Fixed-flow heart: exact (SV is an input). Ventricle: SV estimated relative to `ref`. */
+export function mapEstimate(p: Params, ref: Params): number {
+  return p.heart === 1 ? derive({ ...p, sv: ref.sv * v3SvRatio(p, ref) }).map : derive(p).map;
+}
+
 /** Physiologic response (Params.resp), applied after drugs. `base` = the user's inputs (no drugs).
  *  The couplings follow the heart rate the user set (base.hr: the pacing rate or exercise intensity);
  *  heart-rate changes caused by drugs keep each drug's own SV effect, so pharmacology is not
@@ -107,10 +120,32 @@ export function applyResponse(params: Params, base: Params, hasDrugs = true): Re
   }
   params.sv *= svFactor;
   params.radius = radiusForSvr(params.radius, svrFactor);
-  const mapOpen = derive(params).map;
   // MAP the HR relation alone aims for (no drugs), shown in the rail
   const noDrug: Params = { ...base, sv: base.sv * svFactor, radius: radiusForSvr(base.radius, svrFactor) };
-  mapSet = derive(noDrug).map;
+  let mapOpen: number;
+  if (params.heart === 1) {
+    // Ventricle: SV is an output. Find the preload (pacing: EDV falls with rate at unchanged EF, Rozenman 1984) or contractility
+    // (exercise: sympathetic inotropy) multiplier that gives the target SV, using full beats of the patient
+    // without drugs (they depend only on the inputs, so they are cached), then apply it with the drugs.
+    const svRest = simulate({ ...base, hr: Math.max(1, params.hrRest) }).m.svOut;
+    const target = svRest * svFactor;
+    const key: 'ees' | 'preload' = mode === 2 ? 'ees' : 'preload';
+    const S = V3_SV_SENS[key];
+    let k = 1;
+    for (let i = 0; i < 3; i++) {
+      const got = simulate({ ...noDrug, [key]: base[key] * k }).m.svOut;
+      if (!(got > 0) || Math.abs(got / target - 1) < 0.005) break;
+      k *= Math.pow(target / got, 1 / S);
+    }
+    params[key] *= k;
+    const adj: Params = { ...noDrug, [key]: base[key] * k };
+    const mAdj = simulate(adj).m;
+    mapSet = mAdj.map;
+    mapOpen = derive({ ...params, sv: mAdj.svOut * v3SvRatio(params, adj) }).map;
+  } else {
+    mapOpen = derive(params).map;
+    mapSet = derive(noDrug).map;
+  }
   if (mode === 3 && hasDrugs) {
     const f = baroFraction(params.sex, params.age);
     const k = Math.pow(mapSet / mapOpen, f);
@@ -136,7 +171,10 @@ function combine(base: Params, levels: DrugLevel[]): Params {
     if (fx.cAo) p.cAo *= pow(fx.cAo);
     if (fx.gamma) p.gamma *= pow(fx.gamma);
     if (fx.hrAdd) p.hr += fx.hrAdd * e;
-    if (fx.svAdd) p.sv += fx.svAdd * e;
+    // the fixed-flow heart takes the drug's SV change directly; the ventricle gets it from contractility and filling
+    if (fx.svAdd && p.heart !== 1) p.sv += fx.svAdd * e;
+    if (fx.ees) p.ees *= pow(fx.ees);
+    if (fx.preload) p.preload *= pow(fx.preload);
   }
   p.gamma = Math.min(MODEL.gammaMax, p.gamma);
   return p;
@@ -170,7 +208,7 @@ export function applyDrugEffects(base: Params, events: readonly DrugEvent[], t: 
   let reflexBpm = 0;
   if (levels.some(l => l.drug === BAROREFLEX.drug && l.effect > 0)) {
     const without = combine(base, levels.filter(l => l.drug !== BAROREFLEX.drug));
-    const rise = derive(params).map - derive(without).map;
+    const rise = mapEstimate(params, base) - mapEstimate(without, base);
     reflexBpm = -Math.min(BAROREFLEX.maxFall, BAROREFLEX.bpmPerMmHg * Math.max(0, rise));
     params.hr += reflexBpm;
   }
@@ -181,7 +219,8 @@ export function applyDrugEffects(base: Params, events: readonly DrugEvent[], t: 
   const hrAfter = Math.min(hrMax, Math.max(hrMin, params.hr));
   const hrRef = Math.min(hrMax, Math.max(hrMin, hrBefore));
   let svRise = 0;
-  if (hrAfter < hrRef - 1e-9) {
+  // the ventricle fills and ejects more at a slower rate by itself, so the illustrative rule is v2-only
+  if (params.heart !== 1 && hrAfter < hrRef - 1e-9) {
     const sv0 = params.sv;
     params.sv *= Math.pow(hrRef / hrAfter, SV_HR_COUPLING.exponent);
     svRise = params.sv - sv0;

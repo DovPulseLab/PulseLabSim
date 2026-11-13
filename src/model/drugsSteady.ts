@@ -12,7 +12,9 @@ export function applyDrugs(base: Params, active: readonly string[] = []): Params
     if (fx.cAo) p.cAo *= fx.cAo;
     if (fx.gamma) p.gamma *= fx.gamma;
     if (fx.hrAdd) p.hr += fx.hrAdd;
-    if (fx.svAdd) p.sv += fx.svAdd;
+    if (fx.svAdd && p.heart !== 1) p.sv += fx.svAdd;
+    if (fx.ees) p.ees *= fx.ees;
+    if (fx.preload) p.preload *= fx.preload;
   }
   p.gamma = Math.min(MODEL.gammaMax, p.gamma);
   return p;
