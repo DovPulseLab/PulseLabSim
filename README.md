@@ -47,6 +47,13 @@ Also: drugs as bolus or infusion events with onset/offset (13 drugs), guided cas
 and scoring, pin baseline (`B`), undo/redo, shareable links (Copy link), exports (PNG, CSV, JSON),
 Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour (`H`).
 
+### New in v2.8
+
+- **Synchronized aortic pressure & flow export (Excel)**: Export ▾ → choose a sampling rate
+  (200–2000 Hz) and number of beats. The .xlsx has one sheet per patient with time, aortic
+  pressure, aortic flow, forward/backward waves, dP/dt and peripheral pressures on one time axis,
+  plus a beat summary (all metrics), the inputs used and a README sheet with units and method.
+
 ### New in v2.7 (age evidence recalibration)
 
 - **The age slider calibrates SVR and Γ too**: arteriolar radius and Γ follow age curves through the
