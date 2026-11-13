@@ -8,7 +8,7 @@
    model was not fitted to.
    ===================================================================== */
 import { DEFAULTS, LAWS, MODEL, PRESETS, RESPONSE, STUDY_PROFILES, STUDY_TARGETS, baroFraction, weisslerMs, type Params } from '../config/physiology';
-import { CALIB, SVI_DOPPLER_SD, WASE_DOPPLER_CI, WASE_GROUPS, aortaDiameter, bsaDuBois, interp, pwvNormal, svIndex, svIndexDoppler } from './calibrate';
+import { CALIB, SVI_DOPPLER_SD, applyCalibration, WASE_DOPPLER_CI, WASE_GROUPS, aortaDiameter, bsaDuBois, interp, pwvNormal, svIndex, svIndexDoppler } from './calibrate';
 import { diastolicDecay, finiteOutputs } from './indices';
 import { buildCycle } from './cycle';
 import { applyDrugEffects, type DrugEvent } from '../engine/kinetics';
@@ -84,6 +84,8 @@ export interface StudyReport {
   response: StudyCheck[];
   laws: StudyCheck[];
   wilkinson: StudyCheck[];
+  /** the same benchmark with the v3 ventricle (stage 6) */
+  wilkinsonV3: StudyCheck[];
   /** v2.7: age trends across the study profiles against the aging evidence */
   aging: StudyCheck[];
 }
@@ -291,24 +293,27 @@ export function runStudyValidation(): StudyReport {
      Compared with the 65-y man in Pacing mode, measured the way the study measured (cuff, device). */
   const W60 = { aix: 24.1, psbp: 135, pdbp: 80, csbp: 126, cdbp: 82, ppa: 1.28, p1: 30, ed: 323 };
   const W100 = { aix: 8.8, psbp: 144, pdbp: 93, csbp: 129, cdbp: 96, ppa: 1.59, p1: 32, ed: 272 };
-  const wk = (hr: number) => {
-    const e = applyDrugEffects({ ...DEFAULTS, ...PRESETS['Healthy man (65 y)'], hr, resp: 1, hrRest: 70 }, [], 0);
+  const wk = (hr: number, heart = 0) => {
+    const b0: Params = { ...DEFAULTS, ...PRESETS['Healthy man (65 y)'] };
+    const b = heart ? applyCalibration({ ...b0, heart: 1 }) : b0;
+    const e = applyDrugEffects({ ...b, hr, resp: 1, hrRest: 70 }, [], 0);
     const m = simulate(e.params).m; const p1 = m.AP > 0 ? m.Ps - m.AP : m.Ps;
     return { aix: m.AIx, psbp: m.bSBP, pdbp: m.bDBP, csbp: m.devCSBP, cdbp: m.bDBP, ppa: m.ppa, p1: p1 - m.Pd, ed: m.et };
   };
-  const w0 = wk(60), w1 = wk(100);
-  const wrow = (k: keyof typeof W60, what: string, unit: string, tol: number, dp = 0): StudyCheck => {
-    const dm = w1[k] - w0[k], dw = W100[k] - W60[k], err = Math.abs(dm - dw);
+  const w0 = wk(60), w1 = wk(100), v0 = wk(60, 1), v1 = wk(100, 1);
+  const wrow = (k: keyof typeof W60, what: string, unit: string, tol: number, dp = 0, v3 = false): StudyCheck => {
+    const dm = v3 ? v1[k] - v0[k] : w1[k] - w0[k], dw = W100[k] - W60[k], err = Math.abs(dm - dw);
     const sg = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(dp)}`;
     return { kind: 'data', what: `Wilkinson benchmark, 60 → 100 bpm: change in ${what}`, model: `${sg(dm)} ${unit}`, reference: `${sg(dw)} ${unit} (${W60[k]} → ${W100[k]})`, source: 'Wilkinson 2000, Table 2',
       verdict: err <= tol ? 'pass' : err <= 2 * tol ? 'near' : 'fail' };
   };
-  const wilkinson: StudyCheck[] = [
-    wrow('cdbp', 'central DBP', 'mmHg', 3), wrow('pdbp', 'cuff DBP', 'mmHg', 3),
-    wrow('csbp', 'central SBP (device)', 'mmHg', 3), wrow('psbp', 'cuff SBP', 'mmHg', 3),
-    wrow('aix', 'AIx', '%', 3, 1), wrow('ppa', 'PP amplification', '×', 0.06, 2),
-    wrow('p1', 'forward-wave height P1 − DBP', 'mmHg', 3), wrow('ed', 'ejection duration', 'ms', 10)
+  const wrows = (v3: boolean): StudyCheck[] => [
+    wrow('cdbp', 'central DBP', 'mmHg', 3, 0, v3), wrow('pdbp', 'cuff DBP', 'mmHg', 3, 0, v3),
+    wrow('csbp', 'central SBP (device)', 'mmHg', 3, 0, v3), wrow('psbp', 'cuff SBP', 'mmHg', 3, 0, v3),
+    wrow('aix', 'AIx', '%', 3, 1, v3), wrow('ppa', 'PP amplification', '×', 0.06, 2, v3),
+    wrow('p1', 'forward-wave height P1 − DBP', 'mmHg', 3, 0, v3), wrow('ed', 'ejection duration', 'ms', 10, 0, v3)
   ];
+  const wilkinson = wrows(false), wilkinsonV3 = wrows(true);
 
   /* v2.4 model review: pressure → PWV, ejection time and age, τ vs R·C */
   const pwvSlope = (p: Partial<Params>) => {    // m/s per 10 mmHg MAP, central difference via SVR
@@ -362,5 +367,5 @@ export function runStudyValidation(): StudyReport {
     reference: `${ZC_REF.phanIqr[0]}–${ZC_REF.mitchell95} across methods: median ${ZC_REF.phanMedian} (IQR ${ZC_REF.phanIqr[0]}–${ZC_REF.phanIqr[1]}; MRI pressure–flow) to ${ZC_REF.mitchellMean} ± ${ZC_REF.mitchellSd} (Framingham)`, source: 'Phan 2016; Mitchell 2010',
     verdict: zcYoung.every(z => within(z, ZC_REF.phanIqr[0], ZC_REF.mitchell95)) ? 'pass' : 'near' });
 
-  return { profiles, heartRate, decay, cycle, response, laws, wilkinson, aging };
+  return { profiles, heartRate, decay, cycle, response, laws, wilkinson, wilkinsonV3, aging };
 }
