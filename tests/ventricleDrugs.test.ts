@@ -61,3 +61,20 @@ describe('Validation §12 stage 5 rows', () => {
     expect(bad).toEqual(['Pacing 70 → 110 bpm: ejection fraction']);
   });
 });
+
+import { runStudyValidation } from '../src/model/validationStudy';
+describe('stage 6: Wilkinson pacing benchmark with the ventricle', () => {
+  const s = runStudyValidation();
+  const get = (rows: typeof s.wilkinson, what: string) => rows.find(r => r.what.includes(what))!;
+  it('has the same eight rows as v2', () => {
+    expect(s.wilkinsonV3.map(r => r.what)).toEqual(s.wilkinson.map(r => r.what));
+  });
+  it('the ventricle moves cuff and central SBP toward the patients (numbers quoted in §10)', () => {
+    const num = (t: string) => Number(t.replace('−', '-').split(' ')[0]);
+    const v2c = num(get(s.wilkinson, 'cuff SBP').model), v3c = num(get(s.wilkinsonV3, 'cuff SBP').model);
+    expect(v3c).toBeGreaterThan(v2c);
+    expect(v3c).toBeGreaterThanOrEqual(0); expect(v3c).toBeLessThanOrEqual(4);
+    expect(num(get(s.wilkinsonV3, 'central SBP').model)).toBeGreaterThan(num(get(s.wilkinson, 'central SBP').model));
+    expect(num(get(s.wilkinsonV3, 'ejection duration').model)).toBeLessThan(-80);
+  });
+});
