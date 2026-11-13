@@ -69,17 +69,17 @@ describe('pressure–flow workbook', () => {
     { id: 'A', preset: 'Default adult (45 y)', beat, params: beat.params },
     { id: 'B', preset: 'Older adult (70 y)', beat: B, params: B.params }
   ], { fs: 500, beats: 2, created: '2026-11-12T00:00:00Z', version: 'test' });
-  it('has README, one waveform sheet per patient, summary and inputs', () => {
-    expect(sheets.map(s => s.name)).toEqual(['README', 'Patient A waveforms', 'Patient B waveforms', 'Beat summary', 'Inputs']);
+  it('opens on the data: waveform sheets first, then summary, inputs and README', () => {
+    expect(sheets.map(s => s.name)).toEqual(['Patient A waveforms', 'Patient B waveforms', 'Beat summary', 'Inputs', 'README']);
   });
   it('waveform sheets: two header rows then fs × T × beats samples', () => {
-    const a = sheets[1];
+    const a = sheets[0];
     expect(a.rows[0]).toEqual(WAVE_COLUMNS.map(c => c[0]));
     expect(a.rows.length - 2).toBe(Math.round(500 * beat.d.T * 2));
     expect(a.rows[3][1]).toBeCloseTo(1 / 500, 9);
   });
   it('summary includes the metrics for both patients', () => {
-    const row = sheets[3].rows.find(r => r[1] === 'Mean arterial pressure')!;
+    const row = sheets[2].rows.find(r => r[1] === 'Mean arterial pressure')!;
     expect(row[3]).toBeCloseTo(beat.m.map, 3); expect(row[4]).toBeCloseTo(B.m.map, 3);
   });
 });
