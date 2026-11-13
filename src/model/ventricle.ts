@@ -83,10 +83,12 @@ export const tMax = (T: number, scale = 1): number => (0.2 + 0.15 * T) * scale;
  *  Ees set so SV = 72 mL, to: relaxation τ 40–50 ms (Zhang & Kovács 2009: 42–54 ms), dP/dt max
  *  1 000–1 500 and −dP/dt −1 200 to −1 800 mmHg/s (Zhang & Kovács 2009), ejection ≈ 300 ms (study
  *  design; Weissler 294 ms) and v2's AIx and cuff SBP. The relaxation exponent n2 trades τ against
- *  IVRT and −dP/dt; 15.5 balances them. Result: τ 40 ms, dP/dt max 1 370, −dP/dt −1 300, IVCT 67 ms,
- *  LVET 305 ms, IVRT 105 ms, AIx 27 % (v2 28), cuff SBP 119 (v2 122). */
+ *  IVRT and −dP/dt; 15.5 balances them. ESPVR intercept V0 = −20 mL (chosen so Ea/Ees ≈ 0.6–0.7 at
+ *  the healthy profiles' EF, Chen 1998; with V0 = 0 Ea/Ees fell to 0.36 by 80 y). Result for the
+ *  default adult: Ees 2.10, Ea/Ees 0.72, τ 40 ms, dP/dt max 1 210, −dP/dt −1 370, IVCT 74 ms,
+ *  LVET 303 ms, IVRT 101 ms, AIx 31 % (v2 28), cuff SBP 117 (v2 122). */
 export const V3_SHAPE: Readonly<HillShape> = { c1: 0.55, n1: 1.9, c2: 1.17, n2: 15.5 };
-export const LV_FIXED: Omit<LVParams, 'edv' | 'bsa' | 'pRef' | 'a' | 'edviRef'> = { ees: 2.90, v0: 0, rav: 0.0025, rmv: 0.006, tmaxScale: 1.05, ks: 0.0009, shape: V3_SHAPE };
+export const LV_FIXED: Omit<LVParams, 'edv' | 'bsa' | 'pRef' | 'a' | 'edviRef'> = { ees: 2.10, v0: -20, rav: 0.0025, rmv: 0.006, tmaxScale: 1.05, ks: 0.0009, shape: V3_SHAPE };
 
 /** Patient-dependent ventricle: EDPVR and EDV from Fujimoto by age, scaled by BSA. */
 export function lvForPatient(p: Pick<Params, 'age' | 'height' | 'weight'>): LVParams {
@@ -237,8 +239,8 @@ export function eesForSV(input: Partial<Params>, lv: Partial<LVParams>, targetSV
    every radius and Γ step. Values between ages are interpolated, flat beyond 25–80 y. */
 export const V3_FIT = {
   ages: [25, 45, 65, 80],
-  male:   { ees: [2.30, 2.76, 3.63, 4.51], radius: [101.5, 100.5, 101, 98.5], gamma: [0.01, 0.18, 0.26, 0.41] },
-  female: { ees: [2.34, 2.78, 3.70, 4.48], radius: [99.5, 96.5, 95.5, 93.5],  gamma: [0.25, 0.42, 0.42, 0.48] }
+  male:   { ees: [1.77, 2.04, 2.46, 2.83], radius: [101.5, 100, 100, 97.5], gamma: [0.01, 0.05, 0.08, 0.19] },
+  female: { ees: [1.72, 2.00, 2.43, 2.80], radius: [99.5, 96, 95, 92.5],    gamma: [0.12, 0.27, 0.20, 0.23] }
 } as const;
 const v3k = (ys: readonly number[]) => V3_FIT.ages.map((a, i) => [a, ys[i]] as const);
 export const v3For = (sex: number, age: number) => {
