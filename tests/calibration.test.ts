@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_CONTROLS, DEFAULTS, PRESETS, STUDY_PROFILES, controlText, weisslerMs, type Params } from '../src/config/physiology';
 import { aortaDiameter, applyCalibration, bsaDuBois, calibrate, extrapolatedAt, gammaFor, pwvNormal, radiusFor, svIndex, svIndexDoppler } from '../src/model/calibrate';
-import { diastolicDecay } from '../src/model/indices';
+import { diastolicDecay, finiteOutputs } from '../src/model/indices';
 import { simulate } from '../src/model';
 import { runStudyValidation } from '../src/model/validationStudy';
 import { withInput } from '../src/state/store';
@@ -126,7 +126,7 @@ describe('heart rate up to 180 bpm', () => {
     expect(ALL_CONTROLS.find(c => c.key === 'hr')!.max).toBe(180);
     const m = simulate({ hr: 180 }).m;
     expect(m.et).toBeCloseTo(150, 6);
-    for (const v of Object.values(m)) if (typeof v === 'number') expect(Number.isFinite(v)).toBe(true);
+    for (const [k, v] of finiteOutputs(m, 0)) expect(Number.isFinite(v), k).toBe(true);
   });
 });
 

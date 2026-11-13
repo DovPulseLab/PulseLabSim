@@ -5,7 +5,7 @@ export const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode
 };
 export const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document): T[] => Array.from(root.querySelectorAll<T>(sel));
 export const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-export const fmt = (v: number, f: number): string => (Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(f));
+export const fmt = (v: number, f: number): string => (!Number.isFinite(v) ? '—' : Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(f));
 /** "▲ +3" / "▼ −2" / "±0" with a class for colour (green up, red down) */
 export function delta(dv: number, f: number): { cls: 'up' | 'dn' | 'same'; text: string } {
   if (Math.abs(dv) < Math.pow(10, -f) / 2) return { cls: 'same', text: '±0' };

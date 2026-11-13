@@ -7,11 +7,15 @@
    jump-to-event buttons and click-to-inspect, and plays synthesised S1/S2 when sound is on.
    Aortic pressure and flow come from the model; the rest is schematic (src/model/cycle.ts). */
 import { buildCycle, indexAt, phaseAt, type Cycle } from '../../model/cycle';
+import { LV_FIXED, lvForPatient } from '../../model/ventricle';
+import { lineChart } from '../../render/chart';
 import { col, FONT, setupCanvas } from '../../render/theme';
 import type { BeatResult } from '../../model/solve';
 import type { Ctx } from '../context';
 import { $, $$ } from '../dom';
 import { HeartSounds } from '../heartSounds';
+
+const LV_V0 = LV_FIXED.v0;
 
 type Speed = 1 | 0.5 | 0.25 | 0.125;
 type Mode = 'strip' | 'beat';
@@ -27,6 +31,11 @@ const sounds = new HeartSounds();
 const STRIP_BEATS = 2.5;
 
 const STEP_MS = [-10, -1, 1, 10];
+
+const FINE_V2 = `MVC / MVO = mitral valve closes / opens; AVO / AVC = aortic valve opens / closes; S1 and S2 = first and second heart sounds (synthesised "lub" and "dub", timing only). Aortic pressure and aortic flow are the simulator's own output for this patient. LV and left-atrial pressure outside ejection, LV volume during filling, the ECG and the heart sounds are schematic, built from typical healthy-adult timings (isovolumic contraction 45 ms, LV relaxation τ 40 ms, ejection fraction 60 %, atrial share of filling 22 %) and tied to the modelled beat: the aortic valve opens when LV pressure reaches aortic diastolic pressure and closes at the end of ejection, and LV volume falls by exactly the stroke volume. See Methods §12; the Validation tab (§7) checks these timings against normal ranges.`;
+const FINE_V3 = `MVC / MVO = mitral valve closes / opens; AVO / AVC = aortic valve opens / closes; S1 and S2 = first and second heart sounds (synthesised "lub" and "dub", timing only). <b>Ventricle (v3) is on:</b> LV pressure, LV volume, aortic pressure and aortic flow all come from the time-varying elastance ventricle coupled to this patient's arteries, so isovolumic contraction and relaxation, τ, end-diastolic and end-systolic volumes are model outputs. Left-atrial pressure is the constant filling pressure the model solves for, with a schematic atrial kick; the ECG and heart sounds remain schematic. See Methods §17 and Validation §12.`;
+let pvIdx = -1, pvFor: Cycle | null = null;
+
 
 export function buildCycleTab(ctx: Ctx): void {
   $('#pane-cycle').innerHTML = `
@@ -59,7 +68,15 @@ export function buildCycleTab(ctx: Ctx): void {
       <span class="muted">Click the diagram to pause at that point · Space or K play/pause · , and . step 1 ms (Shift 10 ms)</span>
     </div>
     <p class="caption" id="cycCap"></p>
-    <p class="fine">MVC / MVO = mitral valve closes / opens; AVO / AVC = aortic valve opens / closes; S1 and S2 = first and second heart sounds (synthesised "lub" and "dub", timing only). Aortic pressure and aortic flow are the simulator's own output for this patient. LV and left-atrial pressure outside ejection, LV volume during filling, the ECG and the heart sounds are schematic, built from typical healthy-adult timings (isovolumic contraction 45 ms, LV relaxation τ 40 ms, ejection fraction 60 %, atrial share of filling 22 %) and tied to the modelled beat: the aortic valve opens when LV pressure reaches aortic diastolic pressure and closes at the end of ejection, and LV volume falls by exactly the stroke volume. See Methods §12; the Validation tab (§7) checks these timings against normal ranges.</p>
+    <p class="fine" id="cycFine">${FINE_V2}</p>
+  </div>
+  <div class="card" id="pvCard">
+    <div class="card-h"><h2>Pressure–volume loop <span class="muted" id="pvSub">left ventricle</span></h2></div>
+    <div id="pvBody">
+      <div class="canvas-wrap" style="height:360px"><canvas id="cPV" aria-label="Left-ventricular pressure–volume loop for the active patient"></canvas></div>
+      <p class="caption" id="pvCap"></p>
+    </div>
+    <p class="fine" id="pvNote"></p>
   </div>`;
 
   $('#cycPlay').addEventListener('click', () => setPlaying(!playing));
@@ -152,6 +169,20 @@ export function beatCycle(ctx: Ctx): void {
     `Ejection ${m.et.toFixed(0)} ms; isovolumic relaxation ${((c.tMO - c.tAC) * 1000).toFixed(0)} ms. ` +
     `Aortic pressure ${m.Ps.toFixed(0)}/${m.Pd.toFixed(0)} mmHg; EDV ${c.edv.toFixed(0)} mL, ESV ${c.esv.toFixed(0)} mL, SV ${c.sv.toFixed(0)} mL.` +
     (c.tauIVR < 0.039 ? ` <b>Diastole is very short at this heart rate:</b> relaxation has been compressed to τ ${(c.tauIVR * 1000).toFixed(0)} ms and filling time is limited.` : '');
+  const fine = c.modelled ? FINE_V3 : FINE_V2, fel = $('#cycFine');
+  if (fel.dataset.v !== String(c.modelled)) { fel.innerHTML = fine; fel.dataset.v = String(c.modelled); }
+  const pvOn = !!b.res.lv;
+  ($('#pvBody') as HTMLElement).style.display = pvOn ? '' : 'none';
+  $('#pvSub').textContent = pvOn ? `left ventricle · Patient ${ctx.active()}` : 'left ventricle (needs Ventricle v3)';
+  $('#pvNote').innerHTML = pvOn
+    ? 'Loop runs anticlockwise: filling along the bottom (EDPVR, dashed), isovolumic contraction up the right side, ejection across the top, isovolumic relaxation down the left. The straight dashed line is the end-systolic pressure–volume relation, slope E<sub>es</sub>, through V<sub>0</sub> = −20 mL; the dotted line from the end-diastolic point to end-systole has slope −E<sub>a</sub> (effective arterial elastance = end-systolic pressure ÷ SV). The dot follows the cursor in the diagram above.'
+    : 'Switch <b>Heart model</b> to <b>Ventricle (v3)</b> in the rail to see this patient\'s modelled pressure–volume loop. With the fixed-flow (v2) heart the LV trace above is schematic, so no loop is drawn.';
+  if (pvOn) {
+    $('#pvCap').innerHTML = `E<sub>es</sub> ${m.ees.toFixed(2)} mmHg/mL, E<sub>a</sub> ${m.ea.toFixed(2)} mmHg/mL, E<sub>a</sub>/E<sub>es</sub> ${m.eaEes.toFixed(2)}. ` +
+      `EDV ${m.edv.toFixed(0)} mL at LVEDP ${m.lvEDP.toFixed(1)} mmHg; ESV ${m.esv.toFixed(0)} mL at ${m.lvESP.toFixed(0)} mmHg; SV ${m.svOut.toFixed(0)} mL, EF ${m.ef.toFixed(0)} %. ` +
+      `Peak LV pressure ${m.lvSP.toFixed(0)} mmHg; dP/dt max ${m.dpdtMax.toFixed(0)}, min ${m.dpdtMin.toFixed(0)} mmHg/s; τ ${m.tauLV.toFixed(0)} ms.`;
+  }
+  pvIdx = -1;
 }
 
 /* ---------- per frame ---------- */
@@ -179,6 +210,7 @@ export function tickCycle(ctx: Ctx, frameNow: number): void {
   const t = cursor();
   draw(canvas, c, t);
   readout(c, t);
+  if (b.res.lv) drawPV(c, b.res, t);
   const range = $('#cycRange') as HTMLInputElement;
   if (document.activeElement !== range) range.value = String(Math.round((t - beatStart(t)) * 1000));
 }
@@ -194,6 +226,45 @@ function readout(c: Cycle, tAbs: number): void {
     <span class="mono">t ${(tt * 1000).toFixed(0)} ms · LV ${c.lv[i].toFixed(0)} · Ao ${c.ao[i].toFixed(0)} · LA ${c.la[i].toFixed(0)} mmHg · flow ${c.q[i].toFixed(0)} mL/s · volume ${c.vol[i].toFixed(0)} mL</span>`;
   const el = $('#cycNow');
   if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+}
+
+/* ---------- pressure–volume loop ---------- */
+function drawPV(c: Cycle, r: BeatResult, tAbs: number): void {
+  const cv = document.getElementById('cPV') as HTMLCanvasElement | null;
+  if (!cv || !cv.offsetParent || !r.lv) return;
+  const i = indexAt(c, tAbs - beatStart(tAbs));
+  if (i === pvIdx && pvFor === c) return;
+  pvIdx = i; pvFor = c;
+  const m = r.m, p = r.params;
+  const base = lvForPatient(p), a = base.a * p.lvStiff;
+  const vol = r.lv.vol, lv = r.lv.p;
+  const vMax = Math.max(...vol), vMinL = Math.min(...vol), pMax = Math.max(...lv);
+  const x0 = Math.max(0, Math.floor((vMinL - 25) / 10) * 10), x1 = Math.ceil((vMax + 20) / 10) * 10;
+  const y1 = Math.ceil((pMax * 1.15) / 10) * 10;
+  // ESPVR line through V0 with slope Ees
+  const esX = [Math.max(x0, LV_V0), x1], esY = esX.map(v => m.ees * (v - LV_V0));
+  // EDPVR curve
+  const edX: number[] = [], edY: number[] = [];
+  for (let v = x0; v <= x1; v += (x1 - x0) / 60) { const pe = base.pRef * Math.exp(a * (v / base.bsa - base.edviRef)); if (pe > y1) break; edX.push(v); edY.push(pe); }
+  // Ea line from (EDV, 0) to (ESV, ESP)
+  const loopX = [...vol, vol[0]], loopY = [...lv, lv[0]];
+  lineChart(cv, {
+    series: [
+      { x: esX, y: esY, color: '--ink-3', width: 1.2, dash: [6, 4], label: 'ESPVR (Ees)', noHover: true },
+      { x: edX, y: edY, color: '--ink-3', width: 1.2, dash: [3, 3], label: 'EDPVR', noHover: true },
+      { x: [m.edv, m.esv], y: [0, m.lvESP], color: '--fwd', width: 1.2, dash: [1, 3], label: 'Ea', noHover: true },
+      { x: loopX, y: loopY, color: '--accent', width: 2.4, label: 'PV loop' },
+    ],
+    xLabel: 'LV volume (mL)', yLabel: 'LV pressure (mmHg)',
+    xMin: x0, xMax: x1, yMin: 0, yMax: y1,
+    marks: [
+      { x: vol[i] ?? vol[0], y: lv[i] ?? lv[0], color: '--accent', label: '' },
+      { x: m.edv, y: m.lvEDP, color: '--ink-2', label: 'ED', pos: 'right', hollow: true },
+      { x: m.esv, y: m.lvESP, color: '--ink-2', label: 'ES', pos: 'left', hollow: true },
+    ],
+    legend: true, hover: true, hoverFmt: v => v.toFixed(0),
+    ariaLabel: `Pressure–volume loop: EDV ${m.edv.toFixed(0)} mL, ESV ${m.esv.toFixed(0)} mL, peak ${m.lvSP.toFixed(0)} mmHg`,
+  });
 }
 
 /* ---------- drawing ---------- */

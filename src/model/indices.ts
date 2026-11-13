@@ -18,6 +18,9 @@ export interface Indices {
   ppa: number; co: number; svrDyn: number; svrWU: number; zcDyn: number;
   ctot: number; svpp: number; tau: number; lp: number;
   cAoOp: number; cMusOp: number; cPath: number; ep: number; et: number;
+  /** v3 ventricle outputs (NaN with the v2 fixed-flow heart) */
+  svOut: number; ef: number; edv: number; esv: number; lvEDP: number; lvESP: number; lvSP: number; pla: number;
+  dpdtMax: number; dpdtMin: number; tauLV: number; ivct: number; ivrt: number; ees: number; ea: number; eaEes: number;
   peakQ: number; fwdAmp: number; bwdAmp: number; cMAP: number;
   /** diastolic decay: fitted time constant (s), mean rate of fall (mmHg/s), fit window */
   tauFit: number; decayRate: number; decayFall: number; iDecay: number; decayP0: number;
@@ -76,6 +79,13 @@ const arrMax = (a: number[]) => Math.max(...a);
 const arrMin = (a: number[]) => Math.min(...a);
 
 /** Clinical indices for one beat (ported from v1 indices()). */
+/** Outputs that only the v3 ventricle produces (NaN with the v2 fixed-flow heart). */
+export const LV_ONLY_KEYS = ['svOut', 'ef', 'edv', 'esv', 'lvEDP', 'lvESP', 'lvSP', 'pla', 'dpdtMax', 'dpdtMin', 'tauLV', 'ivct', 'ivrt', 'ees', 'ea', 'eaEes'] as const;
+const LV_ONLY = new Set<string>(LV_ONLY_KEYS);
+/** Every output that should be a finite number for this beat (ventricle outputs only with heart = 1). */
+export const finiteOutputs = (m: Indices, heart: number): [string, number][] =>
+  Object.entries(m).filter(([k, v]) => typeof v === 'number' && (heart === 1 || !LV_ONLY.has(k))) as [string, number][];
+
 export function indices(r: IndexInput): Indices {
   const { d, dt, p, pf, pb, q, brachial, radial, params } = r;
   const DYN = PHYS.DYN;
@@ -130,6 +140,8 @@ export function indices(r: IndexInput): Indices {
     peakQ: arrMax(q), fwdAmp: arrMax(pf) - arrMin(pf), bwdAmp: arrMax(pb) - arrMin(pb), cMAP: d.map,
     tauFit: dec.tau, decayRate: dec.rate, decayFall: dec.fall, iDecay: dec.i0, decayP0: dec.p0,
     tauFree: dec.tauFree, pInf: dec.pInf,
-    pzf: cuffOn ? MODEL.pzfFrac * d.map : 0, tauEff: d.svr * (1 - (cuffOn ? MODEL.pzfFrac : 0)) * d.cTot
+    pzf: cuffOn ? MODEL.pzfFrac * d.map : 0, tauEff: d.svr * (1 - (cuffOn ? MODEL.pzfFrac : 0)) * d.cTot,
+    svOut: NaN, ef: NaN, edv: NaN, esv: NaN, lvEDP: NaN, lvESP: NaN, lvSP: NaN, pla: NaN,
+    dpdtMax: NaN, dpdtMin: NaN, tauLV: NaN, ivct: NaN, ivrt: NaN, ees: NaN, ea: NaN, eaEes: NaN
   };
 }

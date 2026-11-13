@@ -31,6 +31,8 @@ export interface Resampled {
   brachial: number[];  // intra-arterial brachial pressure, mmHg
   radial: number[];    // radial pressure, mmHg
   dpdt: number[];      // dP/dt of aortic pressure, mmHg/s
+  /** present only with the v3 ventricle */
+  lv?: { p: number[]; vol: number[]; qm: number[]; dpdt: number[] };
 }
 
 /** Periodic linear interpolation of a beat sampled at k·dt (k = 0…N−1) at time t. */
@@ -65,6 +67,15 @@ export function resampleBeat(r: BeatResult, fs = DEFAULT_RATE, beats = DEFAULT_B
     out.radial.push(periodicInterp(r.radial, dt, t));
     out.dpdt.push(periodicInterp(dp, dt, t));
   }
+  if (r.lv) {
+    const L = r.lv, dl = periodicDerivative(L.p, dt);
+    const lv = { p: [] as number[], vol: [] as number[], qm: [] as number[], dpdt: [] as number[] };
+    for (const t of out.t) {
+      lv.p.push(periodicInterp(L.p, dt, t)); lv.vol.push(periodicInterp(L.vol, dt, t));
+      lv.qm.push(periodicInterp(L.qm, dt, t)); lv.dpdt.push(periodicInterp(dl, dt, t));
+    }
+    out.lv = lv;
+  }
   return out;
 }
 
@@ -81,3 +92,15 @@ export const WAVE_COLUMNS: [string, string, (w: Resampled, i: number) => number]
   ['brachial_pressure', 'mmHg', (w, i) => w.brachial[i]],
   ['radial_pressure', 'mmHg', (w, i) => w.radial[i]]
 ];
+
+
+/** Extra columns written when the v3 ventricle is on. */
+export const LV_COLUMNS: [string, string, (w: Resampled, i: number) => number][] = [
+  ['lv_pressure', 'mmHg', (w, i) => w.lv!.p[i]],
+  ['lv_volume', 'mL', (w, i) => w.lv!.vol[i]],
+  ['mitral_flow', 'mL/s', (w, i) => w.lv!.qm[i]],
+  ['lv_dPdt', 'mmHg/s', (w, i) => w.lv!.dpdt[i]]
+];
+
+/** Columns for one patient's sheet: the arterial set, plus the LV set when modelled. */
+export const waveColumns = (w: Resampled) => (w.lv ? [...WAVE_COLUMNS, ...LV_COLUMNS] : WAVE_COLUMNS);

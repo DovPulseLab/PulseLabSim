@@ -25,6 +25,10 @@ export interface Params {
   weight: number;    // kg (BSA for calibration only)
   resp: number;      // physiologic response: 0 independent, 1 pacing, 2 exercise, 3 physiologic rest (see RESPONSE)
   hrRest: number;    // bpm, resting heart rate the response is anchored to (the SV slider = SV at this HR)
+  heart: number;     // v3: 0 = prescribed flow (v2 heart), 1 = time-varying elastance ventricle
+  ees: number;       // v3: end-systolic elastance (contractility), mmHg/mL
+  preload: number;   // v3: end-diastolic volume × the age-typical EDV (Fujimoto 2012)
+  lvStiff: number;   // v3: diastolic stiffness × the age-typical EDPVR constant
 }
 
 export type ParamKey = keyof Params;
@@ -118,7 +122,11 @@ export const DEFAULTS: Readonly<Params> = {
   age: 45,
   weight: 77,
   resp: 0,
-  hrRest: 70
+  hrRest: 70,
+  heart: 0,
+  ees: 2.1,
+  preload: 1,
+  lvStiff: 1
 };
 
 /* ---------------- sliders (from v1 js/content.js) ---------------- */
@@ -199,6 +207,16 @@ export const CONTROLS: ControlGroup[] = [
       tip: 'Fraction of the forward wave reflected at the effective reflection site (impedance mismatch). Vasodilators lower it; vasoconstrictors raise it. Changing sex or age resets it to the value fitted for that age (to Janner 2010 AIx, not a direct measurement of reflection).' },
     { key: 'lpScale', label: 'Reflection-site position', min: 0.7, max: 1.5, step: 0.01, unit: '×', f: 2,
       tip: 'Scales the effective distance to the major reflection site (Lp = 0.27 × height × factor). Values > 1 shift the site distally (as described in youth).' }
+  ]},
+  { group: 'Ventricle (v3)', color: 'var(--accent)', items: [
+    { key: 'heart', label: 'Heart model', min: 0, max: 1, step: 1, unit: '', f: 0, kind: 'toggle', options: ['Fixed flow (v2)', 'Ventricle (v3)'],
+      tip: 'Fixed flow: the v2 heart ejects the stroke volume you set, whatever the load. Ventricle: a time-varying elastance left ventricle with valves and filling; stroke volume, ejection time, LV pressures, dP/dt and LVEDP become outputs, and the heart responds to afterload, preload and contractility. Switching recalibrates arteriolar radius and Γ for this age and sex.' },
+    { key: 'ees', label: 'Contractility (Ees)', min: 0.8, max: 5, step: 0.01, unit: 'mmHg/mL', f: 2,
+      tip: 'End-systolic elastance: slope of the end-systolic pressure–volume line. Higher Ees ejects more against the same load and raises dP/dt max. Healthy adults ≈ 1.7–2.5 mmHg/mL, rising with age (Redfield 2005). Ventricle model only; set from age and sex by the calibration.' },
+    { key: 'preload', label: 'Preload (EDV)', min: 0.6, max: 1.5, step: 0.01, unit: '× typical', f: 2,
+      tip: 'End-diastolic volume as a multiple of the age-typical value (Fujimoto 2012 EDV index × BSA). More volume stretches the ventricle (Frank–Starling: more stroke volume) and raises LVEDP along the EDPVR. Ventricle model only.' },
+    { key: 'lvStiff', label: 'Diastolic stiffness', min: 0.5, max: 3, step: 0.05, unit: '×', f: 2,
+      tip: 'Multiplies the age-typical stiffness constant of the end-diastolic pressure–volume curve (Fujimoto 2012). Stiffer ventricles need a higher filling pressure (LVEDP) for the same volume, as in HFpEF. Ventricle model only.' }
   ]},
   { group: 'Physiologic response', color: 'var(--accent)', items: [
     { key: 'resp', label: 'When HR or drugs change', min: 0, max: 3, step: 1, unit: '', f: 0, kind: 'toggle', options: ['Independent', 'Pacing', 'Exercise', 'Physiologic'], model: false,
@@ -476,6 +494,13 @@ export const CITATIONS = {
   Yokota2023: 'Yokota A, Kabutoya T, Hoshide S, Kario K. Comparison of heart rate and cardiac output of VVI pacemaker settings in patients with atrial fibrillation with bradycardia. J Arrhythm 2023;39:574–579.',
   Harrison1989: 'Harrison MR, Clifton GD, Sublett KL, DeMaria AN. Effect of heart rate on Doppler indexes of systolic function in humans. J Am Coll Cardiol 1989;14:929–935.',
   Alhakak2023: 'Alhakak AS, Olsen FJ, Skaarup KG, et al. Age- and sex-based normal reference ranges of the cardiac time intervals: the Copenhagen City Heart Study. Clin Res Cardiol 2023; doi:10.1007/s00392-023-02269-2.',
+  Stergiopulos1996: 'Stergiopulos N, Meister JJ, Westerhof N. Determinants of stroke volume and systolic and diastolic aortic pressure. Am J Physiol 1996;270:H2050–H2059.',
+  Senzaki1996: 'Senzaki H, Chen CH, Kass DA. Single-beat estimation of end-systolic pressure-volume relation in humans. Circulation 1996;94:2497–2506.',
+  Shroff1985: 'Shroff SG, Janicki JS, Weber KT. Evidence and quantitation of left ventricular systolic resistance. Am J Physiol 1985;249:H358–H370.',
+  Chen1998: 'Chen CH, Nakayama M, Nevo E, et al. Coupled systolic-ventricular and vascular stiffening with age. J Am Coll Cardiol 1998;32:1221–1227.',
+  Fujimoto2012: 'Fujimoto N, Hastings JL, Bhella PS, et al. Effect of ageing on left ventricular compliance and distensibility in healthy sedentary humans. J Physiol 2012;590:1871–1880.',
+  ZhangKovacs2009: 'Zhang W, Kovács SJ. The age dependence of left ventricular filling efficiency. Ultrasound Med Biol 2009;35:1076–1085.',
+  Yamakado1997: 'Yamakado T, Takagi E, Okubo S, et al. Effects of aging on left ventricular relaxation in humans: analysis of left ventricular isovolumic pressure decay. Circulation 1997;95:917–923.',
   Patel2021: 'Patel HN, Miyoshi T, Addetia K, et al. Normal values of cardiac output and stroke volume according to measurement technique, age, sex, and ethnicity: results of the World Alliance of Societies of Echocardiography study. J Am Soc Echocardiogr 2021;34:1077–1085.',
   Redfield2005: 'Redfield MM, Jacobsen SJ, Borlaug BA, Rodeheffer RJ, Kass DA. Age- and gender-related ventricular-vascular stiffening: a community-based study. Circulation 2005;112:2254–2262.',
   Phan2016: 'Phan TS, Li JK-J, Segers P, et al. Aging is associated with an earlier arrival of reflected waves without a distal shift in reflection sites. J Am Heart Assoc 2016;5:e003733.',

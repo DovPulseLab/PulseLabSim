@@ -6,12 +6,14 @@ import type { PatientId } from '../state/types';
 import type { Ctx } from './context';
 import { $, $$, esc } from './dom';
 
-const GROUPS: { name: string; keys: ParamKey[]; note?: string }[] = [
+export const GROUPS: { name: string; keys: ParamKey[]; note?: string }[] = [
   { name: 'Patient', keys: ['sex', 'age', 'height', 'weight'],
     note: 'Changing sex, age, height or weight recalculates aortic diameter, aortic PWV and stroke volume from healthy reference data. You can still adjust those sliders afterwards.' },
   { name: 'Physiologic response', keys: ['resp', 'hrRest'],
     note: 'Independent lets each input act alone, for studying one variable at a time. Pacing, Exercise and Physiologic add the body\'s usual responses to a change in heart rate or a drug; the adjusted values show in red beside each slider.' },
   { name: 'Heart', keys: ['hr', 'sv', 'etScale'] },
+  { name: 'Left ventricle (v3)', keys: ['heart', 'ees', 'preload', 'lvStiff'],
+    note: 'Fixed flow (v2) ejects the stroke volume set above. Ventricle (v3) makes stroke volume, ejection time, LV pressures, dP/dt and LVEDP outputs of an elastance ventricle; then the stroke volume and ejection-time sliders have no effect, and Ees, preload and stiffness do.' },
   { name: 'Large arteries', keys: ['cAo', 'diam'] },
   { name: 'Periphery', keys: ['radius', 'cMus', 'gamma', 'lpScale'] }
 ];

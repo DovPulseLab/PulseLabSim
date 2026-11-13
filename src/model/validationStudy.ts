@@ -9,7 +9,7 @@
    ===================================================================== */
 import { DEFAULTS, LAWS, MODEL, PRESETS, RESPONSE, STUDY_PROFILES, STUDY_TARGETS, baroFraction, weisslerMs, type Params } from '../config/physiology';
 import { CALIB, SVI_DOPPLER_SD, WASE_DOPPLER_CI, WASE_GROUPS, aortaDiameter, bsaDuBois, interp, pwvNormal, svIndex, svIndexDoppler } from './calibrate';
-import { diastolicDecay } from './indices';
+import { diastolicDecay, finiteOutputs } from './indices';
 import { buildCycle } from './cycle';
 import { applyDrugEffects, type DrugEvent } from '../engine/kinetics';
 import { simulate } from './solve';
@@ -159,7 +159,7 @@ export function runStudyValidation(): StudyReport {
   const paced = [70, 100, 130, 160, 180].map(hr => simulate({ hr, sv: co / hr }).m);
   const aixFalls = paced.every((m, i) => i === 0 || m.AIx < paced[i - 1].AIx + 0.5);
   const slope = (paced[0].AIx - paced[1].AIx) / 3;   // % per 10 bpm, 70 → 100 bpm
-  const finite = [40, 90, 140, 180].every(hr => Object.values(simulate({ hr }).m).every(v => typeof v === 'string' || Number.isFinite(v)));
+  const finite = [40, 90, 140, 180].every(hr => finiteOutputs(simulate({ hr }).m, 0).every(([, v]) => Number.isFinite(v)));
   const heartRate: StudyCheck[] = [
     { kind: 'consistency', what: 'LVET follows the Weissler lines, men and women, 50–150 bpm', model: lvetOk ? 'exact' : 'differs', reference: '413 − 1.7·HR / 418 − 1.6·HR ms', source: 'Weissler 1968', verdict: lvetOk ? 'pass' : 'fail' },
     { kind: 'consistency', what: 'At 180 bpm ejection is held at its floor and fits in the cycle', model: `${at180.et.toFixed(0)} ms of a ${(60000 / 180).toFixed(0)} ms cycle`, reference: 'Weissler gives 107 ms (extrapolated); floor 150 ms; ≤ 60 % of cycle', source: 'model limits',

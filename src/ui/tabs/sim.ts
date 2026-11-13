@@ -157,11 +157,11 @@ function renderIndexTable(res: BeatResult, base: BeatResult | null): void {
     const v = m[it.k] as number | string, num = typeof v === 'number';
     const val = num ? fmt(v, it.f) : String(v);
     let dl = '';
-    if (b && num) {
+    if (b && num && Number.isFinite(v) && Number.isFinite(b[it.k] as number)) {
       const dv = v - (b[it.k] as number), th = Math.pow(10, -it.f) / 2;
       dl = Math.abs(dv) < th ? '<span class="d same">±0</span>' : `<span class="d ${dv > 0 ? 'up' : 'dn'}">${dv > 0 ? '▲ +' : '▼ '}${fmt(dv, it.f)}</span>`;
     }
-    return `<div class="mrow"><button class="nm" data-explain="${it.k}" title="${esc(it.tip)}">${it.l}</button><span class="vl ${num && it.st ? it.st(v) : ''}">${val} <span class="muted">${it.u}</span></span><span class="dl">${dl}</span></div>`;
+    return `<div class="mrow"><button class="nm" data-explain="${it.k}" title="${esc(it.tip)}">${it.l}</button><span class="vl ${num && it.st && Number.isFinite(v) ? it.st(v) : ''}">${val} <span class="muted">${it.u}</span></span><span class="dl">${dl}</span></div>`;
   }).join('')}</div>`).join('');
 }
 

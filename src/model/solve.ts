@@ -17,6 +17,7 @@ import { derive, type Derived } from './derive';
 import { fft } from './fft';
 import { flowWave } from './flow';
 import { indices, type Indices } from './indices';
+import { simulatePatientLV } from './ventricle';
 
 export interface ZinPoint { f: number; mod: number; }
 
@@ -34,6 +35,8 @@ export interface BeatResult {
   brachial: number[];
   zin: ZinPoint[];    // |Zin| at each harmonic, mmHg·s/mL
   m: Indices;
+  /** v3 ventricle traces on the same grid and origin as p (absent with the v2 heart) */
+  lv?: { p: number[]; vol: number[]; qm: number[] };
 }
 
 /** Scale applied to the terminal reflection coefficient at frequency f (Hz).
@@ -70,11 +73,18 @@ export function inputImpedance(d: Derived, f: number): Cx {
 
 /** Simulate one steady-state beat. Missing inputs take their defaults. */
 export function simulate(input: Partial<Params>): BeatResult {
-  const N = PHYS.N;
   const p: Params = Object.assign({}, DEFAULTS, input);
+  if (p.heart === 1) return simulatePatientLV(p);
   const d = derive(p);
+  return simulateWithFlow(p, d, flowWave(p, d, PHYS.N));
+}
+
+/** The arterial solution for a given aortic flow over one beat (index 0 = start of ejection).
+ *  Used by simulate() with the prescribed v1/v2 flow wave, and by the v3 ventricle with the
+ *  flow it ejects (d.ET and p.sv must then describe that flow). */
+export function simulateWithFlow(p: Params, d: Derived, q: Float64Array): BeatResult {
+  const N = q.length;
   const dt = d.T / N;
-  const q = flowWave(p, d, N);
   const qr = Float64Array.from(q), qi = new Float64Array(N);
   fft(qr, qi, false);
 

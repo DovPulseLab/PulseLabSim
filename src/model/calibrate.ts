@@ -172,11 +172,24 @@ export function calibrate(p: Pick<Params, 'sex' | 'age' | 'height' | 'weight'>):
 /** Inputs that calibration sets (v2.7 adds arteriolar radius and Γ). */
 export const CALIBRATED_KEYS = ['diam', 'cAo', 'sv', 'cMus', 'radius', 'gamma'] as const;
 /** Inputs whose change triggers calibration. */
-export const DEMOGRAPHIC_KEYS = ['sex', 'age', 'height', 'weight'] as const;
+export const DEMOGRAPHIC_KEYS = ['sex', 'age', 'height', 'weight', 'heart'] as const;
 
-/** Apply calibration to a parameter set, rounding to the slider steps. */
+/** v3 fits (ventricle model): set by registerV3Fits from ventricle.ts to avoid an import cycle. */
+let v3Fits: ((sex: number, age: number) => { ees: number; radius: number; gamma: number }) | null = null;
+export const registerV3Fits = (f: typeof v3Fits): void => { v3Fits = f; };
+
+/** Apply calibration to a parameter set, rounding to the slider steps. With the ventricle model
+ *  (heart = 1) radius, Γ and Ees come from the v3 fits instead. */
 export function applyCalibration(p: Params): Params {
   const c = calibrate(p);
+  if (p.heart === 1 && v3Fits) {
+    const f = v3Fits(p.sex, p.age);
+    c.radius = f.radius; c.gamma = f.gamma;
+    return { ...applyCalibrationV2(p, c), ees: Math.round(f.ees * 100) / 100 };
+  }
+  return applyCalibrationV2(p, c);
+}
+function applyCalibrationV2(p: Params, c: Calibration): Params {
   return {
     ...p,
     diam: Number((Math.round(c.diam / 0.05) * 0.05).toFixed(2)),
