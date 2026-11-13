@@ -42,7 +42,7 @@ describe('heart model switch', () => {
 describe('calibration with the ventricle on', () => {
   it('uses the v3 fit for Ees, radius and reflection', () => {
     const p = applyCalibration({ ...DEFAULTS, ...PRESETS['Healthy man (65 y)'], heart: 1 });
-    const f = v3For('male', 65);
+    const f = v3For(0, 65);
     expect(p.ees).toBeCloseTo(f.ees, 2); expect(p.radius).toBeCloseTo(f.radius, 1);
   });
   it('v2 calibration is unchanged with the v2 heart', () => {
