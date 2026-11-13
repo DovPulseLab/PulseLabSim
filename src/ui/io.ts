@@ -1,8 +1,12 @@
-/* Exports (central PNG, waveforms CSV, metrics CSV, trends CSV, parameters JSON),
+/* Exports (central PNG, waveforms CSV, metrics CSV, trends CSV, parameters JSON,
+   synchronized pressure–flow workbook at a fixed sampling rate (xlsx)),
    JSON import with schema errors shown, and Copy link. */
 import { METRICS } from '../config/metrics';
 import { col } from '../render/theme';
 import { exportParameters, importParameters } from '../state/importJson';
+import { waveformWorkbook } from '../state/waveformWorkbook';
+import { writeXlsx, XLSX_MIME } from '../state/xlsx';
+import { DEFAULT_BEATS, DEFAULT_RATE } from '../model/waveformExport';
 import { encodeState } from '../state/url';
 import type { Ctx } from './context';
 import { $, download, toast } from './dom';
@@ -35,6 +39,15 @@ export function exportAs(ctx: Ctx, kind: string): void {
     const rows = [head.join(',')];
     for (const id of ['A', 'B'] as const) for (const s of ctx.live.sims[id].trend.window()) rows.push([id, ...keys.map(k => s[k].toFixed(k === 't' ? 2 : 3))].join(','));
     download(`pulse-lab-trends-${stamp()}.csv`, rows.join('\n'), 'text/csv');
+  } else if (kind === 'xlsx') {
+    const fs = Number(document.querySelector<HTMLSelectElement>('#expFs')?.value ?? DEFAULT_RATE);
+    const beats = Number(document.querySelector<HTMLSelectElement>('#expBeats')?.value ?? DEFAULT_BEATS);
+    const app = ctx.store.get().app;
+    const sheets = waveformWorkbook((['A', 'B'] as const).map(id => ({
+      id, preset: app.patients[id].preset, beat: ctx.live.beats[id]!.res, params: ctx.live.beats[id]!.effect.params
+    })), { fs, beats, created: new Date().toISOString(), version: 'v2.8' });
+    download(`pulse-lab-pressure-flow-${fs}Hz-${stamp()}.xlsx`, new Blob([writeXlsx(sheets)], { type: XLSX_MIME }), XLSX_MIME);
+    toast(`Exported ${beats} beat${beats > 1 ? 's' : ''} per patient at ${fs} Hz.`);
   } else if (kind === 'json') {
     const f = exportParameters(ctx.store.get().app, { A: ctx.live.beats.A!.effect.params, B: ctx.live.beats.B!.effect.params });
     download(`pulse-lab-parameters-${stamp()}.json`, JSON.stringify(f, null, 2), 'application/json');

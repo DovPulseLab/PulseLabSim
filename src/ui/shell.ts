@@ -1,5 +1,6 @@
 /* Static page structure. Tabs are keyed 1–8. */
 import type { TabId } from '../state/types';
+import { DEFAULT_BEATS, DEFAULT_RATE, EXPORT_BEATS, EXPORT_RATES } from '../model/waveformExport';
 
 export const TAB_LABELS: [TabId, string][] = [
   ['sim', 'Simulator'], ['cycle', 'Cardiac cycle'], ['cmp', 'Compare A vs B'], ['learn', 'Learn'], ['sweep', 'Sweep'],
@@ -39,6 +40,13 @@ export function buildShell(root: HTMLElement): void {
           <button data-exp="metrics" role="menuitem">Metrics (CSV)</button>
           <button data-exp="trends" role="menuitem">Trends, last 10 min (CSV)</button>
           <button data-exp="json" role="menuitem">Parameters (JSON)</button>
+          <hr>
+          <div class="menu-sub">Synchronized aortic pressure &amp; flow</div>
+          <div class="menu-opts">
+            <label class="menu-opt">Rate <select id="expFs" aria-label="Sampling rate">${EXPORT_RATES.map(r => `<option value="${r}"${r === DEFAULT_RATE ? ' selected' : ''}>${r} Hz</option>`).join('')}</select></label>
+            <label class="menu-opt">Beats <select id="expBeats" aria-label="Number of beats">${EXPORT_BEATS.map(b => `<option value="${b}"${b === DEFAULT_BEATS ? ' selected' : ''}>${b}</option>`).join('')}</select></label>
+          </div>
+          <button data-exp="xlsx" role="menuitem">Pressure &amp; flow waveforms (Excel)</button>
           <hr>
           <label role="menuitem">Import parameters (JSON)… <input type="file" id="importFile" accept=".json,application/json" class="sr-only"></label>
         </div>
