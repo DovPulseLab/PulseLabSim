@@ -82,7 +82,7 @@ describe('UI smoke test', () => {
     }
     expect(document.querySelector('#pane-valid')!.textContent).toContain('Formula checks');
     expect(errors).toEqual([]);
-  });
+  }, 30000);   // the Validation tab runs the full v3 validation (≈ 100 ventricle beats) on first open
 
   it('inputs, drugs, pin, undo and explain work', async () => {
     key('1');
