@@ -71,3 +71,12 @@ describe('waveform export', () => {
     expect(Math.max(...w.lv!.dpdt)).toBeGreaterThan(0.85 * v3.m.dpdtMax);
   });
 });
+
+import { CARDS } from '../src/config/metrics';
+describe('right-hand Left ventricle cards', () => {
+  it('show numbers with the ventricle and exist for every LV metric shown', () => {
+    const lv = CARDS.filter(c => c.lv);
+    expect(lv.length).toBeGreaterThanOrEqual(12);
+    for (const c of lv) expect(c.v(v3), c.id).not.toMatch(/NaN|undefined/);
+  });
+});

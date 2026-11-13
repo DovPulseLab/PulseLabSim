@@ -108,6 +108,8 @@ export interface Card {
   d: (r: BeatResult, b: BeatResult) => number;
   st?: (r: BeatResult) => Status;
   explain: string;      // Explain-drawer id
+  /** Ventricle (v3) card: shown only when the ventricle model is on */
+  lv?: boolean;
 }
 export const CARDS: Card[] = [
   { id: 'cuff', l: 'Cuff BP', v: r => `${r.m.bSBP.toFixed(0)}/${r.m.bDBP.toFixed(0)}`, d: (r, b) => r.m.bSBP - b.m.bSBP, u: 'mmHg', f: 0, st: r => S(129, 139)(r.m.bSBP), explain: 'bSBP' },
@@ -122,5 +124,20 @@ export const CARDS: Card[] = [
   { id: 'dtp', l: 'Δtp', v: r => r.m.dtp.toFixed(0), d: (r, b) => r.m.dtp - b.m.dtp, u: 'ms', f: 0, explain: 'dtp' },
   { id: 'ew', l: 'ΔEw', v: r => (r.m.Ew / 1000).toFixed(1), d: (r, b) => (r.m.Ew - b.m.Ew) / 1000, u: '×10³', f: 1, st: r => S(5000, 12000)(r.m.Ew), explain: 'Ew' },
   { id: 'decay', l: 'τ = R·C', v: r => r.m.tau.toFixed(2), d: (r, b) => r.m.tau - b.m.tau, u: 's', f: 2, explain: 'tau' },
-  { id: 'sevr', l: 'SEVR', v: r => r.m.sevr.toFixed(0), d: (r, b) => r.m.sevr - b.m.sevr, u: '%', f: 0, st: r => SL(130, 100)(r.m.sevr), explain: 'sevr' }
+  { id: 'sevr', l: 'SEVR', v: r => r.m.sevr.toFixed(0), d: (r, b) => r.m.sevr - b.m.sevr, u: '%', f: 0, st: r => SL(130, 100)(r.m.sevr), explain: 'sevr' },
+  // Left ventricle (Heart model → Ventricle v3 only)
+  { lv: true, id: 'lvsv', l: 'Stroke volume', v: r => r.m.svOut.toFixed(0), d: (r, b) => r.m.svOut - b.m.svOut, u: 'mL', f: 0, explain: 'svOut' },
+  { lv: true, id: 'lvef', l: 'EF', v: r => r.m.ef.toFixed(0), d: (r, b) => r.m.ef - b.m.ef, u: '%', f: 0, st: r => SL(50, 40)(r.m.ef), explain: 'ef' },
+  { lv: true, id: 'lvvol', l: 'EDV / ESV', v: r => `${r.m.edv.toFixed(0)}/${r.m.esv.toFixed(0)}`, d: (r, b) => r.m.edv - b.m.edv, u: 'mL', f: 0, explain: 'edv' },
+  { lv: true, id: 'lvedp', l: 'LVEDP', v: r => r.m.lvEDP.toFixed(1), d: (r, b) => r.m.lvEDP - b.m.lvEDP, u: 'mmHg', f: 1, st: r => S(15, 20)(r.m.lvEDP), explain: 'lvEDP' },
+  { lv: true, id: 'lvesp', l: 'LVESP', v: r => r.m.lvESP.toFixed(0), d: (r, b) => r.m.lvESP - b.m.lvESP, u: 'mmHg', f: 0, explain: 'lvESP' },
+  { lv: true, id: 'lvsp', l: 'LV peak', v: r => r.m.lvSP.toFixed(0), d: (r, b) => r.m.lvSP - b.m.lvSP, u: 'mmHg', f: 0, explain: 'lvSP' },
+  { lv: true, id: 'dpmax', l: 'dP/dt max', v: r => r.m.dpdtMax.toFixed(0), d: (r, b) => r.m.dpdtMax - b.m.dpdtMax, u: 'mmHg/s', f: 0, st: r => SL(1000, 800)(r.m.dpdtMax), explain: 'dpdtMax' },
+  { lv: true, id: 'dpmin', l: 'dP/dt min', v: r => r.m.dpdtMin.toFixed(0), d: (r, b) => r.m.dpdtMin - b.m.dpdtMin, u: 'mmHg/s', f: 0, explain: 'dpdtMin' },
+  { lv: true, id: 'lvtau', l: 'τ relaxation', v: r => r.m.tauLV.toFixed(0), d: (r, b) => r.m.tauLV - b.m.tauLV, u: 'ms', f: 0, st: r => S(55, 70)(r.m.tauLV), explain: 'tauLV' },
+  { lv: true, id: 'ivct', l: 'IVCT', v: r => r.m.ivct.toFixed(0), d: (r, b) => r.m.ivct - b.m.ivct, u: 'ms', f: 0, explain: 'ivct' },
+  { lv: true, id: 'ivrt', l: 'IVRT', v: r => r.m.ivrt.toFixed(0), d: (r, b) => r.m.ivrt - b.m.ivrt, u: 'ms', f: 0, explain: 'ivrt' },
+  { lv: true, id: 'lvet', l: 'Ejection time', v: r => r.m.et.toFixed(0), d: (r, b) => r.m.et - b.m.et, u: 'ms', f: 0, explain: 'et' },
+  { lv: true, id: 'ees', l: 'Ees', v: r => r.m.ees.toFixed(2), d: (r, b) => r.m.ees - b.m.ees, u: 'mmHg/mL', f: 2, explain: 'ees' },
+  { lv: true, id: 'eaees', l: 'Ea / Ees', v: r => r.m.eaEes.toFixed(2), d: (r, b) => r.m.eaEes - b.m.eaEes, u: '', f: 2, st: r => r.m.eaEes <= 1 ? 'ok' : r.m.eaEes <= 1.3 ? 'warn' : 'bad', explain: 'eaEes' }
 ];
