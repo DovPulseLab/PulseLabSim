@@ -119,7 +119,10 @@ export interface LVResult {
   tau: number;               // s, isovolumic relaxation time constant (zero asymptote)
   peakE: number;             // mL/s, peak mitral inflow
   ea: number;                // effective arterial elastance = LVESP / SV, mmHg/mL
+  tOnset: number;            // s, onset of contraction (end-diastole) on the output grid (origin = start of ejection)
   lvp: LVParams;
+  /** solver state on the internal grid (0 = onset of contraction), for the transient (vena caval occlusion) model */
+  internal: { q: Float64Array; en: number[]; dt: number; d: Derived; zc: number; params: Params };
   iterations: number; converged: boolean;
 }
 
@@ -230,7 +233,8 @@ export function simulateLV(input: Partial<Params>, lvIn: Partial<LVParams> = {},
     sv, esv, edv: edvMax, ef: sv / edvMax, lvedp, lvesp, lvsp: Math.max(...P), pla,
     dpdtMax: Math.max(...dp), dpdtMin: Math.min(...dp),
     ivct: (i0 - iMC) * dt, lvet, ivrt: (iMO - i1) * dt, tmax, tau: -1 / slope, peakE: Math.max(...qm),
-    ea: lvesp / sv, lvp: lv, iterations: it, converged
+    ea: lvesp / sv, tOnset: ((N - i0) % N) * dt, lvp: lv, iterations: it, converged,
+    internal: { q: Float64Array.from(q), en, dt, d, zc, params: base }
   };
 }
 
@@ -277,12 +281,16 @@ registerV3Fits(v3For);
  *  preload × age-typical EDV, EDPVR constant × lvStiff. Results are cached by input set, because the
  *  live engine, charts and tabs ask for the same beat many times. */
 const lvCache = new Map<string, BeatResult>();
+/** Ventricle inputs for a patient (heart = 1), as used by simulatePatientLV. */
+export function lvInputsForPatient(p: Params): Partial<LVParams> {
+  const base = lvForPatient(p);
+  return { ees: p.ees, edv: base.edv * p.preload, a: base.a * p.lvStiff };
+}
 export function simulatePatientLV(p: Params): BeatResult {
   const key = JSON.stringify(p);
   const hit = lvCache.get(key); if (hit) return hit;
-  const base = lvForPatient(p);
-  const r = simulateLV(p, { ees: p.ees, edv: base.edv * p.preload, a: base.a * p.lvStiff });
-  const out: BeatResult = { ...r.beat, lv: { p: r.lv, vol: r.vol, qm: r.qm },
+  const r = simulateLV(p, lvInputsForPatient(p));
+  const out: BeatResult = { ...r.beat, lv: { p: r.lv, vol: r.vol, qm: r.qm, tOnset: r.tOnset },
     m: { ...r.beat.m, svOut: r.sv, ef: r.ef * 100, edv: r.edv, esv: r.esv, lvEDP: r.lvedp, lvESP: r.lvesp, lvSP: r.lvsp, pla: r.pla,
       dpdtMax: r.dpdtMax, dpdtMin: r.dpdtMin, tauLV: r.tau * 1000, ivct: r.ivct * 1000, ivrt: r.ivrt * 1000, ees: r.lvp.ees, ea: r.ea, eaEes: r.ea / r.lvp.ees } };
   if (lvCache.size > 400) lvCache.clear();

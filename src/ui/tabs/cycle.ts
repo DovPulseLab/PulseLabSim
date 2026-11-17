@@ -14,6 +14,7 @@ import type { BeatResult } from '../../model/solve';
 import type { Ctx } from '../context';
 import { $, $$ } from '../dom';
 import { HeartSounds } from '../heartSounds';
+import { beatVCO, bindVCO, VCO_CARD } from '../vcoPanel';
 
 const LV_V0 = LV_FIXED.v0;
 
@@ -77,7 +78,8 @@ export function buildCycleTab(ctx: Ctx): void {
       <p class="caption" id="pvCap"></p>
     </div>
     <p class="fine" id="pvNote"></p>
-  </div>`;
+  </div>${VCO_CARD}`;
+  bindVCO(ctx);
 
   $('#cycPlay').addEventListener('click', () => setPlaying(!playing));
   // after a click on any control here, drop focus so Space keeps meaning play/pause
@@ -183,6 +185,7 @@ export function beatCycle(ctx: Ctx): void {
       `Peak LV pressure ${m.lvSP.toFixed(0)} mmHg; dP/dt max ${m.dpdtMax.toFixed(0)}, min ${m.dpdtMin.toFixed(0)} mmHg/s; τ ${m.tauLV.toFixed(0)} ms.`;
   }
   pvIdx = -1;
+  beatVCO(ctx);
 }
 
 /* ---------- per frame ---------- */

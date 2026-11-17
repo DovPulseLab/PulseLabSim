@@ -36,7 +36,7 @@ export interface BeatResult {
   zin: ZinPoint[];    // |Zin| at each harmonic, mmHg·s/mL
   m: Indices;
   /** v3 ventricle traces on the same grid and origin as p (absent with the v2 heart) */
-  lv?: { p: number[]; vol: number[]; qm: number[] };
+  lv?: { p: number[]; vol: number[]; qm: number[]; /** s, onset of contraction (end-diastole) on this grid */ tOnset?: number };
 }
 
 /** Scale applied to the terminal reflection coefficient at frequency f (Hz).

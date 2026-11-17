@@ -8,14 +8,27 @@
    number of beats. Pressure and flow share one time axis, so every row is
    a synchronized pressure–flow sample.
 
-   Time 0 = start of ejection (aortic valve opening) of the first beat, the
-   same origin as the solver. Values are model outputs, not measurements.
+   Time origin. With the Ventricle (v3) heart, time 0 = onset of contraction
+   (end-diastole, LVEDP) of the first beat, so each beat holds the whole LV
+   pressure waveform in order: isovolumic contraction from LVEDP, ejection,
+   isovolumic relaxation and filling. With the fixed-flow (v2) heart there is
+   no LV, and time 0 = start of ejection (aortic valve opening), the solver's
+   own origin.
+
+   dP/dt. Computed on the exported samples with a 5-point Savitzky–Golay
+   first-derivative filter (least-squares quadratic over 5 samples):
+       dP/dt(i) = [−2P(i−2) − P(i−1) + P(i+1) + 2P(i+2)] / (10 Δt)
+   i.e. a 5-point moving filter that smooths and differentiates in one step,
+   as used for catheter pressure. At 500 Hz the window is 8 ms. Because the
+   beat is periodic, samples either side of the file's ends come from the
+   neighbouring beats, so the first and last rows are not truncated.
+   Values are model outputs, not measurements.
    ===================================================================== */
 import type { BeatResult } from './solve';
 
 export const EXPORT_RATES = [200, 250, 500, 1000, 2000] as const;
 export const EXPORT_BEATS = [1, 3, 5, 10] as const;
-export const DEFAULT_RATE = 1000;
+export const DEFAULT_RATE = 500;
 export const DEFAULT_BEATS = 3;
 
 export interface Resampled {
@@ -30,7 +43,10 @@ export interface Resampled {
   pb: number[];        // backward (reflected) pressure wave, mmHg
   brachial: number[];  // intra-arterial brachial pressure, mmHg
   radial: number[];    // radial pressure, mmHg
-  dpdt: number[];      // dP/dt of aortic pressure, mmHg/s
+  dpdt: number[];      // dP/dt of aortic pressure, mmHg/s (5-point filter)
+  /** s, time on the solver grid (0 = start of ejection) that export time 0 maps to */
+  t0: number;
+  origin: 'end-diastole' | 'ejection';
   /** present only with the v3 ventricle */
   lv?: { p: number[]; vol: number[]; qm: number[]; dpdt: number[] };
 }
@@ -49,32 +65,39 @@ export function periodicDerivative(y: readonly number[], dt: number): number[] {
   return y.map((_, k) => (y[(k + 1) % N] - y[(k - 1 + N) % N]) / (2 * dt));
 }
 
-export function resampleBeat(r: BeatResult, fs = DEFAULT_RATE, beats = DEFAULT_BEATS): Resampled {
+/** 5-point Savitzky–Golay first derivative (quadratic, window 5) of a uniformly sampled
+ *  signal. `at(i)` returns sample i and may be called for i outside the record (periodic beat). */
+export function sg5Derivative(at: (i: number) => number, n: number, h: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) out.push((-2 * at(i - 2) - at(i - 1) + at(i + 1) + 2 * at(i + 2)) / (10 * h));
+  return out;
+}
+
+export interface ResampleOptions {
+  /** 'auto' (default): end-diastole with the v3 ventricle, start of ejection otherwise */
+  origin?: 'auto' | 'end-diastole' | 'ejection';
+}
+
+export function resampleBeat(r: BeatResult, fs = DEFAULT_RATE, beats = DEFAULT_BEATS, opts: ResampleOptions = {}): Resampled {
   if (!(fs >= 200)) throw new Error('sampling rate must be at least 200 Hz');
   if (!(beats >= 1) || !Number.isInteger(beats)) throw new Error('beats must be a positive integer');
-  const T = r.d.T, dt = r.dt, n = Math.round(fs * T * beats);
-  const dp = periodicDerivative(r.p, dt);
-  const out: Resampled = { fs, beats, T, t: [], beat: [], p: [], q: [], pf: [], pb: [], brachial: [], radial: [], dpdt: [] };
-  for (let i = 0; i < n; i++) {
-    const t = i / fs;
-    out.t.push(t);
-    out.beat.push(Math.min(beats, Math.floor(t / T) + 1));
-    out.p.push(periodicInterp(r.p, dt, t));
-    out.q.push(periodicInterp(r.q, dt, t));
-    out.pf.push(periodicInterp(r.pf, dt, t));
-    out.pb.push(periodicInterp(r.pb, dt, t));
-    out.brachial.push(periodicInterp(r.brachial, dt, t));
-    out.radial.push(periodicInterp(r.radial, dt, t));
-    out.dpdt.push(periodicInterp(dp, dt, t));
-  }
+  const T = r.d.T, dt = r.dt, n = Math.round(fs * T * beats), h = 1 / fs;
+  const want = opts.origin ?? 'auto';
+  const ed = want === 'end-diastole' || (want === 'auto' && r.lv?.tOnset != null);
+  if (ed && r.lv?.tOnset == null) throw new Error('end-diastolic origin needs the v3 ventricle');
+  const t0 = ed ? r.lv!.tOnset! : 0;
+  const at = (y: readonly number[]) => (i: number) => periodicInterp(y, dt, t0 + i * h);
+  const series = (y: readonly number[]) => { const f = at(y), o: number[] = []; for (let i = 0; i < n; i++) o.push(f(i)); return o; };
+  const out: Resampled = {
+    fs, beats, T, t0, origin: ed ? 'end-diastole' : 'ejection',
+    t: Array.from({ length: n }, (_, i) => i * h),
+    beat: Array.from({ length: n }, (_, i) => Math.min(beats, Math.floor(i * h / T + 1e-9) + 1)),
+    p: series(r.p), q: series(r.q), pf: series(r.pf), pb: series(r.pb), brachial: series(r.brachial), radial: series(r.radial),
+    dpdt: sg5Derivative(at(r.p), n, h)
+  };
   if (r.lv) {
-    const L = r.lv, dl = periodicDerivative(L.p, dt);
-    const lv = { p: [] as number[], vol: [] as number[], qm: [] as number[], dpdt: [] as number[] };
-    for (const t of out.t) {
-      lv.p.push(periodicInterp(L.p, dt, t)); lv.vol.push(periodicInterp(L.vol, dt, t));
-      lv.qm.push(periodicInterp(L.qm, dt, t)); lv.dpdt.push(periodicInterp(dl, dt, t));
-    }
-    out.lv = lv;
+    const L = r.lv;
+    out.lv = { p: series(L.p), vol: series(L.vol), qm: series(L.qm), dpdt: sg5Derivative(at(L.p), n, h) };
   }
   return out;
 }
