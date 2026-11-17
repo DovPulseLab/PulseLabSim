@@ -14,6 +14,7 @@ import { DEFAULTS, RESPONSE, STUDY_PROFILES, type Params } from '../config/physi
 import { applyDrugEffects } from '../engine/kinetics';
 import { applyCalibration, bsaDuBois, extrapolatedAt, interp } from './calibrate';
 import { simulate, type BeatResult } from './solve';
+import { simulateVCO, type VCOResult } from './vco';
 
 export const RESEARCH_AGES = [20, 40, 60, 80] as const;
 export const RESEARCH_HRS = [60, 70, 80, 90, 100, 110, 120] as const;
@@ -29,6 +30,13 @@ export interface ResearchOptions {
   modes: readonly number[]; // resp values
   heart: number;            // 1 = Ventricle (v3), 0 = fixed flow (v2)
   hrRest: number;           // bpm, the resting rate the response modes are anchored to
+  /** vena caval occlusion (Ventricle v3 only): always once per patient at rest; `every` adds one per run */
+  vco?: ResearchVCO;
+}
+export interface ResearchVCO {
+  every: boolean;           // also at every mode × heart rate (slower)
+  dropPes: number;          // mmHg
+  beats: number;            // occlusion beats
 }
 export const DEFAULT_RESEARCH: ResearchOptions = {
   sexes: [0], ages: RESEARCH_AGES, hrs: RESEARCH_HRS, modes: RESEARCH_MODES.map(m => m.resp), heart: 1, hrRest: DEFAULTS.hrRest
@@ -40,11 +48,13 @@ export interface ResearchPatient {
   params: Params;           // calibrated inputs, resting HR
   rest: BeatResult;         // resting beat (Independent, HR = hrRest)
   note: string;             // provenance of the inputs
+  vco?: VCOResult;          // occlusion at rest (Independent, resting HR)
 }
 export interface ResearchRun {
   patient: string; sex: string; age: number; mode: string; hr: number;
   beat: BeatResult;
   clamped: string[];        // inputs held at a slider limit by the response mode
+  vco?: VCOResult;          // occlusion at this mode and heart rate (when vco.every)
 }
 
 /** Height and weight for a sex and age, interpolated between the healthy study profiles. */
@@ -64,12 +74,21 @@ export function researchPatient(sex: number, age: number, heart: number, hrRest:
   return { id: `${sex ? 'F' : 'M'}${age}`, label: `Healthy ${sex ? 'woman' : 'man'} (${age} y)`, params, rest: simulate(params), note };
 }
 
+/** Number of steps researchRuns() yields progress for (runs plus occlusions). */
+export function researchSteps(o: ResearchOptions): number {
+  const runs = o.sexes.length * o.ages.length * o.modes.length * o.hrs.length;
+  const v = o.vco && o.heart === 1 ? o.sexes.length * o.ages.length + (o.vco.every ? runs : 0) : 0;
+  return runs + v;
+}
+
 /** All runs, in order patient → mode → HR. `onProgress` lets a caller yield between runs. */
 export function* researchRuns(o: ResearchOptions): Generator<{ done: number; total: number; patient?: ResearchPatient; run?: ResearchRun }> {
-  const total = o.sexes.length * o.ages.length * o.modes.length * o.hrs.length;
+  const total = researchSteps(o), vco = o.heart === 1 ? o.vco : undefined;
+  const vopt = vco ? { dropPes: vco.dropPes, beats: vco.beats } : undefined;
   let done = 0;
   for (const sex of o.sexes) for (const age of o.ages) {
     const pt = researchPatient(sex, age, o.heart, o.hrRest);
+    if (vopt) { pt.vco = simulateVCO(pt.params, vopt); done++; }
     yield { done, total, patient: pt };
     for (const resp of o.modes) {
       const mode = RESEARCH_MODES.find(m => m.resp === resp)?.label ?? `mode ${resp}`;
@@ -77,7 +96,9 @@ export function* researchRuns(o: ResearchOptions): Generator<{ done: number; tot
         const e = applyDrugEffects({ ...pt.params, hr, resp }, [], 0);
         const beat = simulate(e.params);
         done++;
-        yield { done, total, run: { patient: pt.id, sex: sex ? 'female' : 'male', age, mode, hr, beat, clamped: e.clamped } };
+        const run: ResearchRun = { patient: pt.id, sex: sex ? 'female' : 'male', age, mode, hr, beat, clamped: e.clamped };
+        if (vopt && vco!.every) { run.vco = simulateVCO(e.params, vopt); done++; }
+        yield { done, total, run };
       }
     }
   }
@@ -105,6 +126,12 @@ export const RESULT_COLUMNS: [string, string, (r: ResearchRun) => number | strin
   ['inputs_at_slider_limit', '', r => r.clamped.join(' ')]
 ];
 
+/** Occlusion columns, added to the results sheet when the occlusion ran at every heart rate. */
+export const VCO_COLUMNS: [string, string, (r: ResearchRun) => number | string][] = [
+  ['VCO_Ees', 'mmHg/mL', r => r.vco?.espvr.slope ?? ''], ['VCO_V0', 'mL', r => r.vco?.espvr.v0 ?? ''], ['VCO_r2', '', r => r.vco?.espvr.r2 ?? ''],
+  ['VCO_Pes_fall', 'mmHg', r => r.vco?.dropPes ?? ''], ['VCO_filling_fall', 'mmHg', r => r.vco?.dPla ?? '']
+];
+
 /** Columns always written (they identify the row). */
 export const ID_COLUMNS = ['patient', 'sex', 'age', 'mode', 'heart_rate'];
 /** Optional output columns with a plain-language label for the checkboxes. */
@@ -130,6 +157,13 @@ export const PROFILE_ROWS: [string, string, (p: ResearchPatient) => number | str
   ['Ees (contractility)', 'mmHg/mL', p => p.rest.m.ees], ['EDV at rest', 'mL', p => p.rest.m.edv], ['EF at rest', '%', p => p.rest.m.ef],
   ['LVEDP at rest', 'mmHg', p => p.rest.m.lvEDP], ['LV dP/dt max at rest', 'mmHg/s', p => p.rest.m.dpdtMax],
   ['Notes', '', p => p.note]
+];
+/** Extra profile rows when the occlusion ran. */
+export const VCO_PROFILE_ROWS: [string, string, (p: ResearchPatient) => number | string][] = [
+  ['Occlusion ESPVR slope Ees (fitted)', 'mmHg/mL', p => p.vco?.espvr.slope ?? ''], ['Occlusion ESPVR V0 (fitted)', 'mL', p => p.vco?.espvr.v0 ?? ''],
+  ['Occlusion ESPVR r²', '', p => p.vco?.espvr.r2 ?? ''], ['Occlusion: fall in Pes', 'mmHg', p => p.vco?.dropPes ?? ''],
+  ['Occlusion: filling pressure before → after', 'mmHg', p => p.vco ? `${p.vco.pla0.toFixed(1)} → ${(p.vco.pla0 - p.vco.dPla).toFixed(1)}` : ''],
+  ['Occlusion: EDV first → last beat', 'mL', p => p.vco ? `${p.vco.beats[0].edv.toFixed(0)} → ${p.vco.beats[p.vco.beats.length - 1].edv.toFixed(0)}` : '']
 ];
 
 export const PACING_NOTE = `Pacing: cardiac output × (1 + ${(RESPONSE.pacingCoPerBpm * 100).toFixed(3)} %/bpm) and MAP × (1 + ${(RESPONSE.pacingMapPerBpm * 100).toFixed(2)} %/bpm) above the resting rate (Ross 1965; Lazim 2025).`;
