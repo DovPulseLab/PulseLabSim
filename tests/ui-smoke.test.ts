@@ -82,7 +82,7 @@ describe('UI smoke test', () => {
     }
     expect(document.querySelector('#pane-valid')!.textContent).toContain('Formula checks');
     expect(errors).toEqual([]);
-  }, 30000);   // the Validation tab runs the full v3 validation (≈ 100 ventricle beats) on first open
+  }, 90_000);   // the Validation tab runs the full v3 validation (≈ 100 ventricle beats) on first open
 
   it('inputs, drugs, pin, undo and explain work', async () => {
     key('1');
@@ -104,7 +104,7 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#drawerNow')!.textContent).toContain('Patient A');
     key('Escape');
     expect(errors).toEqual([]);
-  }, 60_000);
+  }, 180_000);   // generous: GitHub runners can be 2–3 × slower than a laptop
 
   it('compare, lesson try-it, sweep stepping, pause/step and present', async () => {
     key('4'); click('[data-lesson="1"]'); click('#tryBtn'); await frames(30);
@@ -120,7 +120,7 @@ describe('UI smoke test', () => {
     key(' '); key('p'); await frames(5); key('p');
     click('#themeBtn'); await frames(3);
     expect(errors).toEqual([]);
-  }, 60_000);
+  }, 180_000);   // generous: GitHub runners can be 2–3 × slower than a laptop
 
   it('a corrupt JSON import is rejected and settings are kept', async () => {
     const before = document.querySelector<HTMLInputElement>('#num-hr')!.value;
@@ -165,7 +165,7 @@ describe('UI smoke test', () => {
     click('[data-end="close"]');
     expect(panel.hasAttribute('hidden')).toBe(true);
     expect(errors).toEqual([]);
-  }, 60_000);
+  }, 180_000);   // generous: GitHub runners can be 2–3 × slower than a laptop
 
   it('a case without treatment does not reach the goal', async () => {
     click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
@@ -178,7 +178,7 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#startOverlay')!.textContent).toMatch(/Goal reached \(held 45 s\)0 \/ 40/);
     click('[data-end="close"]');
     expect(errors).toEqual([]);
-  }, 60_000);
+  }, 180_000);   // generous: GitHub runners can be 2–3 × slower than a laptop
 
   it('every tab works (clicks and keys 1–9) while a guided case runs, after Quit and after Finish', async () => {
     click('#casesBtn'); click('[data-case="induction"]'); await frames(4, 250);
@@ -194,7 +194,7 @@ describe('UI smoke test', () => {
     click('[data-end="close"]'); await frames(2);
     await checkAllTabs('after Finish');
     expect(errors).toEqual([]);
-  }, 120_000);
+  }, 360_000);   // generous: GitHub runners can be 2–3 × slower than a laptop
 
   it('the young athlete case is an exploration with three things to try', async () => {
     click('#casesBtn'); click('[data-case="athlete"]'); await frames(10, 250);

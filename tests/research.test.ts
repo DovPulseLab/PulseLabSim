@@ -44,7 +44,8 @@ describe('research workbook', () => {
   it('waveform sheets hold one beat per run at the sampling rate', () => {
     const w = sheets[2], expected = runs.filter(r => r.patient === 'M20').reduce((n, r) => n + Math.round(250 * r.beat.d.T), 0);
     expect(w.rows.length - 2).toBe(expected);
-    expect(w.rows[0]).toEqual(['mode', 'heart_rate', 'sample', 'time', 'aortic_pressure', 'aortic_flow', 'lv_pressure', 'lv_volume']);
+    expect(w.rows[0]).toEqual(['mode', 'heart_rate', 'sample', 'time', 'aortic_pressure', 'aortic_flow', 'aortic_dPdt', 'lv_pressure', 'lv_volume', 'lv_dPdt']);
+    expect(Number(w.rows[2][7])).toBeLessThan(25);   // LV pressure starts at end-diastole (LVEDP), not aortic diastolic pressure
   });
   it('writes a valid xlsx (zip) file', () => {
     const b = writeXlsx(sheets);
@@ -62,5 +63,34 @@ describe('research choices', () => {
     const sh = researchWorkbook(patients, runs, { fs: 250, created: 't', version: 'v3', options: o, columns: ['EF', 'LV_dPdt_max'], profiles: false, waveforms: false });
     expect(sh.map(s => s.name)).toEqual(['Results', 'README']);
     expect(sh[0].rows[0]).toEqual(['patient', 'sex', 'age', 'mode', 'heart_rate', 'EF', 'LV_dPdt_max']);
+  });
+});
+
+describe('research: vena caval occlusion', () => {
+  const vo = { ...DEFAULT_RESEARCH, sexes: [0], ages: [40], hrs: [70, 100], modes: [0], vco: { every: false, dropPes: 25, beats: 10 } };
+  it('once per patient at rest: fits, beats and loops sheets; no VCO columns in Results', () => {
+    const r = runResearch(vo);
+    expect(r.patients[0].vco!.espvr.r2).toBeGreaterThan(0.99);
+    expect(r.runs.every(x => !x.vco)).toBe(true);
+    const sh = researchWorkbook(r.patients, r.runs, { fs: 500, created: 't', version: 'v3', options: vo });
+    expect(sh.map(s => s.name)).toEqual(['Results', 'Patient profiles', 'Occlusion fits', 'Occlusion beats', 'Occlusion loops (rest)', 'M40 waveforms', 'README']);
+    expect(sh[0].rows[0]).not.toContain('VCO_Ees');
+    expect(sh[2].rows.length).toBe(3);                       // header, units, rest
+    expect(sh[3].rows.length).toBe(2 + 11);                  // control + 10 beats
+    expect(sh[1].rows.some(row => row[0] === 'Occlusion ESPVR slope Ees (fitted)')).toBe(true);
+  });
+  it('at every heart rate too: VCO columns in Results and one fit per run', () => {
+    const o2 = { ...vo, vco: { ...vo.vco, every: true } };
+    const r = runResearch(o2);
+    const sh = researchWorkbook(r.patients, r.runs, { fs: 500, created: 't', version: 'v3', options: o2, vcoLoops: false });
+    expect(sh.map(s => s.name)).not.toContain('Occlusion loops (rest)');
+    const head = sh[0].rows[0] as string[], k = head.indexOf('VCO_Ees');
+    expect(k).toBeGreaterThan(0);
+    expect(sh[0].rows.slice(2).every(row => Number(row[k]) > 0.5)).toBe(true);
+    expect(sh[2].rows.length).toBe(2 + 1 + 2);              // rest + two heart rates
+  });
+  it('is skipped with the fixed-flow heart', () => {
+    const r = runResearch({ ...vo, heart: 0 });
+    expect(r.patients[0].vco).toBeUndefined();
   });
 });

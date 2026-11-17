@@ -1,12 +1,13 @@
 /* Research tab: run healthy patients across a heart-rate grid in each response mode and
    download the results as an Excel workbook. Runs in small steps so the page stays responsive. */
-import { ID_COLUMNS, OUTPUT_LABELS, RESEARCH_AGES, RESEARCH_MODES, researchRuns, type ResearchOptions, type ResearchPatient, type ResearchRun } from '../../model/research';
+import { ID_COLUMNS, OUTPUT_LABELS, RESEARCH_AGES, RESEARCH_MODES, researchRuns, researchSteps, type ResearchOptions, type ResearchPatient, type ResearchRun } from '../../model/research';
 import { researchWorkbook } from '../../state/researchWorkbook';
 import { writeXlsx, XLSX_MIME } from '../../state/xlsx';
 import type { Ctx } from '../context';
 import { $, $$, download, toast } from '../dom';
 
 const RATES = [200, 250, 500, 1000];
+const DEFAULT_FS = 500;
 let running = false;
 
 const seg = (id: string, items: [string, string][], on: string) =>
@@ -16,7 +17,7 @@ export function buildResearch(_ctx: Ctx): void {
   $('#pane-research').innerHTML = `
   <div class="card prose" style="max-width:none">
     <h2>Research generator <span class="muted">run healthy patients across heart rates and export to Excel</span></h2>
-    <p>Tick what you want in the report. Each patient is a healthy adult of the chosen sex and age, calibrated from the same reference data as the presets (aortic diameter, PWV, stroke volume, SVR, and with the ventricle, contractility). Every patient is run at every heart rate in each chosen mode, with no drugs. The workbook has a <b>Results</b> sheet (one row per patient × mode × heart rate), a <b>Patient profiles</b> sheet (values at rest), one <b>waveform</b> sheet per patient (aortic pressure and flow, synchronized, at the chosen sampling rate), and a README.</p>
+    <p>Tick what you want in the report. Each patient is a healthy adult of the chosen sex and age, calibrated from the same reference data as the presets (aortic diameter, PWV, stroke volume, SVR, and with the ventricle, contractility). Every patient is run at every heart rate in each chosen mode, with no drugs. The workbook has a <b>Results</b> sheet (one row per patient × mode × heart rate), a <b>Patient profiles</b> sheet (values at rest), one <b>waveform</b> sheet per patient (aortic pressure, flow and dP/dt, synchronized, at the chosen sampling rate; with the ventricle also LV pressure, volume and dP/dt, each beat starting at end-diastole), optional <b>caval occlusion</b> sheets (ESPVR fits, beat-by-beat end-diastolic and end-systolic points, loops), and a README.</p>
     <div class="rs-grid">
       <label>Sex</label><div id="rsSexes"><label class="chk"><input type="checkbox" value="0" checked> Men</label><label class="chk"><input type="checkbox" value="1"> Women</label> <span class="muted">(both = each age for each sex)</span></div>
       <label>Ages (y)</label><div id="rsAges">${RESEARCH_AGES.map((a, i) => `<label class="chk"><input type="checkbox" data-slot="${i}" checked> <input type="number" class="rs-age" data-slot="${i}" value="${a}" min="18" max="90" step="1" aria-label="Age ${i + 1}"></label>`).join('')}<span class="muted">up to four; untick to leave one out</span></div>
@@ -24,13 +25,20 @@ export function buildResearch(_ctx: Ctx): void {
       <label>Modes</label><div id="rsModes">${RESEARCH_MODES.map(m => `<label class="chk"><input type="checkbox" value="${m.resp}" checked> ${m.label}</label>`).join('')}</div>
       <label>Heart model</label>${seg('rsHeart', [['1', 'Ventricle (v3)'], ['0', 'Fixed flow (v2)']], '1')}
       <label>Resting heart rate</label><div><input type="number" id="rsRest" value="70" min="40" max="120" step="1"> bpm <span class="muted">(profile values are at this rate; Pacing is anchored to it)</span></div>
-      <label>Sheets</label><div><label class="chk"><input type="checkbox" id="rsProfiles" checked> Patient profiles</label><label class="chk"><input type="checkbox" id="rsWaves" checked> Waveforms (aortic pressure and flow)</label> at <select id="rsFs">${RATES.map(r => `<option value="${r}"${r === 250 ? ' selected' : ''}>${r} Hz</option>`).join('')}</select></div>
+      <label>Caval occlusion</label><div id="rsVco">
+        <label class="chk"><input type="checkbox" id="rsVcoOn"> Run for each patient at rest</label>
+        <label class="chk"><input type="checkbox" id="rsVcoEvery"> also at every mode and heart rate <span class="muted">(≈ 1 s each)</span></label>
+        <br>fall in P<sub>es</sub> <select id="rsVcoDrop">${[15, 20, 25, 30, 35].map(v => `<option value="${v}"${v === 25 ? ' selected' : ''}>${v} mmHg</option>`).join('')}</select>
+        over <select id="rsVcoBeats">${[8, 10, 12, 15].map(v => `<option value="${v}"${v === 12 ? ' selected' : ''}>${v}</option>`).join('')}</select> beats
+        <label class="chk"><input type="checkbox" id="rsVcoLoops" checked> Loops sheet (resting runs)</label>
+        <span class="muted" id="rsVcoEst"></span></div>
+      <label>Sheets</label><div><label class="chk"><input type="checkbox" id="rsProfiles" checked> Patient profiles</label><label class="chk"><input type="checkbox" id="rsWaves" checked> Waveforms (pressure, flow, dP/dt)</label> at <select id="rsFs">${RATES.map(r => `<option value="${r}"${r === DEFAULT_FS ? ' selected' : ''}>${r} Hz</option>`).join('')}</select></div>
       <label>Report columns</label><div><div id="rsCols">${Object.entries(OUTPUT_LABELS).map(([k, l]) => `<label class="chk"><input type="checkbox" value="${k}" checked> ${l}</label>`).join('')}</div>
         <button class="btn sm" id="rsAll">All</button> <button class="btn sm" id="rsNone">None</button> <span class="muted">patient, sex, age, mode and heart rate are always included</span></div>
     </div>
     <p><button class="btn" id="rsRun">Run and download Excel</button> <span id="rsStatus" class="muted" aria-live="polite"></span></p>
     <div class="rs-bar" id="rsBar" hidden><div id="rsBarFill"></div></div>
-    <p class="fine">Physiologic adds only baroreflex buffering of drug effects to the Pacing relation, so with no drugs it gives the same numbers as Pacing. EF, dP/dt max, LVEDP and LVESP need the Ventricle (v3) heart model; with Fixed flow those columns are blank. Ages below 25 y use the 25-year-old reference data. Higher sampling rates make larger files (1000 Hz ≈ 4 × the size of 250 Hz). Educational model output, not patient data.</p>
+    <p class="fine">Caval occlusion needs the Ventricle (v3) heart model. It lowers left-atrial filling pressure over the chosen beats until end-systolic pressure has fallen by the chosen amount, with heart rate, contractility and arteries held, and fits the ESPVR (sheets <b>Occlusion fits</b>, <b>Occlusion beats</b> and, if ticked, <b>Occlusion loops</b>; same model as the Cardiac cycle tab). Waveform dP/dt uses a 5-point Savitzky–Golay filter. Physiologic adds only baroreflex buffering of drug effects to the Pacing relation, so with no drugs it gives the same numbers as Pacing. EF, dP/dt max, LVEDP and LVESP need the Ventricle (v3) heart model; with Fixed flow those columns are blank. Ages below 25 y use the 25-year-old reference data. Higher sampling rates make larger files (1000 Hz ≈ 4 × the size of 250 Hz). Educational model output, not patient data.</p>
     <div id="rsSummary"></div>
   </div>`;
 
@@ -41,6 +49,9 @@ export function buildResearch(_ctx: Ctx): void {
     $$(`${id} button`).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   });
   $('#rsRun').addEventListener('click', () => { void run(); });
+  $('#pane-research').addEventListener('input', vcoEstimate);
+  $('#pane-research').addEventListener('click', () => setTimeout(vcoEstimate, 0));
+  vcoEstimate();
 }
 
 const pressed = (id: string) => Number($(`${id} button[aria-pressed="true"]`).dataset.v);
@@ -61,7 +72,23 @@ export function readResearchOptions(): ResearchOptions | string {
   if (rest < 40 || rest > 120) return 'resting heart rate must be 40–120 bpm';
   const hrs: number[] = []; for (let h = h0; h <= h1 + 1e-9; h += st) hrs.push(Math.round(h * 10) / 10);
   if (hrs.length > 40) return 'at most 40 heart rates per run';
-  return { sexes, ages, hrs, modes, heart: pressed('#rsHeart'), hrRest: rest };
+  const heart = pressed('#rsHeart');
+  const vcoOn = ($('#rsVcoOn') as HTMLInputElement).checked;
+  if (vcoOn && heart !== 1) return 'caval occlusion needs the Ventricle (v3) heart model';
+  const vco = vcoOn ? { every: ($('#rsVcoEvery') as HTMLInputElement).checked, dropPes: Number(($('#rsVcoDrop') as HTMLSelectElement).value), beats: Number(($('#rsVcoBeats') as HTMLSelectElement).value) } : undefined;
+  return { sexes, ages, hrs, modes, heart, hrRest: rest, ...(vco ? { vco } : {}) };
+}
+
+/** Show how many occlusions the current choices mean and roughly how long they take. */
+function vcoEstimate(): void {
+  const el = document.getElementById('rsVcoEst'); if (!el) return;
+  const every = $('#rsVcoEvery') as HTMLInputElement, on = ($('#rsVcoOn') as HTMLInputElement).checked;
+  every.disabled = !on;
+  const o = readResearchOptions();
+  if (!on) { el.textContent = ''; return; }
+  if (typeof o === 'string') { el.textContent = ` (${o})`; return; }
+  const n = researchSteps(o) - o.sexes.length * o.ages.length * o.modes.length * o.hrs.length;
+  el.textContent = ` · ${n} occlusion${n === 1 ? '' : 's'}, about ${n < 60 ? `${Math.max(1, Math.round(n))} s` : `${(n / 60).toFixed(1)} min`}`;
 }
 
 async function run(): Promise<void> {
@@ -80,7 +107,7 @@ async function run(): Promise<void> {
       if (s.patient) patients.push(s.patient);
       if (s.run) runs.push(s.run);
       fill.style.width = `${(100 * s.done / s.total).toFixed(1)}%`;
-      status.textContent = `Running ${s.done} / ${s.total}…`;
+      status.textContent = `Running ${s.done} / ${s.total}${o.vco ? ' (runs and occlusions)' : ''}…`;
       if (performance.now() - last > 40) { await new Promise(r => setTimeout(r, 0)); last = performance.now(); }
     }
     status.textContent = 'Building workbook…';
@@ -88,7 +115,8 @@ async function run(): Promise<void> {
     const fs = Number(($('#rsFs') as HTMLSelectElement).value);
     const sheets = researchWorkbook(patients, runs, {
       fs, created: new Date().toISOString(), version: 'v3', options: o,
-      columns: checked2('#rsCols'), profiles: ($('#rsProfiles') as HTMLInputElement).checked, waveforms: ($('#rsWaves') as HTMLInputElement).checked
+      columns: checked2('#rsCols'), profiles: ($('#rsProfiles') as HTMLInputElement).checked, waveforms: ($('#rsWaves') as HTMLInputElement).checked,
+      vcoLoops: ($('#rsVcoLoops') as HTMLInputElement).checked
     });
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     download(`pulse-lab-research-${o.sexes.length > 1 ? 'men-women' : o.sexes[0] ? 'women' : 'men'}-${stamp}.xlsx`, new Blob([writeXlsx(sheets)], { type: XLSX_MIME }), XLSX_MIME);

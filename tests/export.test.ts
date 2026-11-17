@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULTS, PRESETS } from '../src/config/physiology';
 import { simulate } from '../src/model';
-import { periodicInterp, resampleBeat, WAVE_COLUMNS } from '../src/model/waveformExport';
+import { DEFAULT_RATE, periodicInterp, resampleBeat, sg5Derivative, WAVE_COLUMNS } from '../src/model/waveformExport';
 import { colName, crc32, writeXlsx } from '../src/state/xlsx';
 import { waveformWorkbook } from '../src/state/waveformWorkbook';
 
@@ -81,5 +81,34 @@ describe('pressure–flow workbook', () => {
   it('summary includes the metrics for both patients', () => {
     const row = sheets[2].rows.find(r => r[1] === 'Mean arterial pressure')!;
     expect(row[3]).toBeCloseTo(beat.m.map, 3); expect(row[4]).toBeCloseTo(B.m.map, 3);
+  });
+});
+
+
+
+describe('LV waveform export (v3): end-diastolic origin, 5-point dP/dt', () => {
+  const v3 = simulate({ heart: 1 });
+  it('defaults to 500 Hz', () => { expect(DEFAULT_RATE).toBe(500); });
+  it('starts each beat at end-diastole, so LV pressure begins at LVEDP, not aortic diastolic pressure', () => {
+    const w = resampleBeat(v3, 500, 2);
+    expect(w.origin).toBe('end-diastole');
+    expect(w.lv!.p[0]).toBeLessThan(v3.m.lvEDP + 3);
+    expect(w.lv!.p[0]).toBeLessThan(w.p[0] - 30);          // well below aortic diastolic pressure
+    // first beat contains the whole cycle in order: rise to peak, fall, back to LVEDP at the end
+    const n = Math.round(500 * w.T), lv = w.lv!.p.slice(0, n);
+    const iPk = lv.indexOf(Math.max(...lv));
+    expect(iPk).toBeGreaterThan(0); expect(iPk).toBeLessThan(n / 2);
+    expect(Math.abs(lv[n - 1] - lv[0])).toBeLessThan(3);
+    expect(w.lv!.vol[0]).toBeCloseTo(v3.m.edv, 0);         // volume is at EDV at time 0
+  });
+  it('the v2 heart keeps the ejection origin', () => { expect(resampleBeat(beat, 500, 1).origin).toBe('ejection'); });
+  it('Savitzky–Golay 5-point derivative is exact for a quadratic', () => {
+    const h = 0.002, d = sg5Derivative(i => 3 + 2 * (i * h) + 5 * (i * h) ** 2, 4, h);
+    d.forEach((v, i) => expect(v).toBeCloseTo(2 + 10 * i * h, 6));
+  });
+  it('filtered LV dP/dt max is close to the solver value', () => {
+    const w = resampleBeat(v3, 500, 1), mx = Math.max(...w.lv!.dpdt), mn = Math.min(...w.lv!.dpdt);
+    expect(mx / v3.m.dpdtMax).toBeGreaterThan(0.9); expect(mx / v3.m.dpdtMax).toBeLessThan(1.05);
+    expect(mn / v3.m.dpdtMin).toBeGreaterThan(0.85);
   });
 });
