@@ -52,7 +52,7 @@ function legend(r: ResearchReport, color: (id: string) => string): string {
 }
 
 const page = (body: string, n: number, total: () => string, title: string) =>
-  `<section class="rp-page"><header class="rp-ph"><span>Pulse Lab Simulator · Research report</span><span>${esc(title)}</span></header>${body}<footer class="rp-pf"><span>Educational model output, not patient data. Not a medical device.</span><span>Page ${n} of <span class="rp-total">${total()}</span></span></footer></section>`;
+  `<section class="rp-page"><header class="rp-ph"><span>Pulse Lab Simulator · Research report</span><span>${esc(title)}</span></header><div class="rp-body">${body}</div><footer class="rp-pf"><span>Educational model output, not patient data. Not a medical device.</span><span>Section ${n} of ${total()}</span></footer></section>`;
 
 /** The user's data-block layout: patient header, then one row per heart rate. */
 function dataBlock(r: ResearchReport, pid: string, mode: string, part?: [number, number]): string {
@@ -112,10 +112,10 @@ export function reportHtml(r: ResearchReport, source: string): string {
     ${slopeRows.map(mm => { const t = r.trends.find(t => t.key === mm.key && t.mode === mode0)!; return `<tr><td class="l">${esc(mm.label)}</td><td>${esc(t.unit)}</td>${r.patients.map(p => { const q = t.per.find(x => x.patient === p.id); return `<td>${q ? `${sgn(q.slope10, mm.dp + 1 > 3 ? 0 : mm.dp + 1)}${q.r2 < 0.9 ? '<sup>†</sup>' : ''}` : '—'}</td>`; }).join('')}</tr>`; }).join('')}</tbody></table>`;
   const PROF: [string, string, number][] = [['Height', 'cm', 0], ['Weight', 'kg', 0], ['Stroke volume at rest', 'mL', 0], ['Cardiac output at rest', 'L/min', 2], ['SVR at rest', 'dyn·s·cm⁻⁵', 0], ['Aortic PWV at rest (operating)', 'm/s', 1], ['Aortic diameter', 'cm', 2], ['Reflection coefficient Γ', '', 2], ['Cuff BP at rest', 'mmHg', 0], ['Central BP at rest', 'mmHg', 0], ['AIx at rest', '%', 0], ['Ees (contractility)', 'mmHg/mL', 2], ['EF at rest', '%', 0], ['LVEDP at rest', 'mmHg', 1], ['Occlusion ESPVR slope Ees (fitted)', 'mmHg/mL', 2]];
   const profRows = PROF.filter(([k]) => r.patients.some(p => p.profile[k] != null && p.profile[k] !== ''));
-  const profTbl = profRows.length ? `<table class="rp-t rp-st"><thead><tr><th class="l">At rest</th><th>Unit</th>${r.patients.map(p => `<th>${esc(p.id)}</th>`).join('')}</tr></thead><tbody>
+  const profTbl = profRows.length ? `<table class="rp-t rp-st"><thead><tr><th class="l">Measure</th><th>Unit</th>${r.patients.map(p => `<th>${esc(p.id)}</th>`).join('')}</tr></thead><tbody>
     ${profRows.map(([k, u, dp]) => `<tr><td class="l">${esc(k.replace(' at rest', '').replace(' (operating)', ''))}</td><td>${esc(u)}</td>${r.patients.map(p => { const v = p.profile[k]; return `<td>${isNum(v) ? f(v, dp) : esc(v ?? '—')}</td>`; }).join('')}</tr>`).join('')}</tbody></table>` : '';
   add('Trends at a glance', `<h2>Change per 10 bpm (${esc(mode0)} mode)</h2><p class="rp-note">Least-squares slope of each measure against heart rate, per patient. <sup>†</sup> r² below 0.9: the change is not close to linear, so read the charts.</p>
-    <div class="rp-cols"><div class="rp-c1">${slopeTbl}</div><div class="rp-c2">${profTbl ? `<h3>Patient profiles</h3>${profTbl}` : ''}</div></div>`);
+    ${slopeTbl}${profTbl ? `<h2 class="rp-gap">Patient profiles at rest</h2>${profTbl}` : ''}`);
 
   // 3 · trend charts, 8 per page, per mode
   const GROUPS: [string, string[]][] = [
@@ -141,8 +141,14 @@ export function reportHtml(r: ResearchReport, source: string): string {
 
   // 5 · occlusion
   if (r.fits.length) {
-    const t = `<table class="rp-t rp-st"><thead><tr><th class="l">Patient</th><th>Mode</th><th>HR</th><th>Fitted Ees<small>mmHg/mL</small></th><th>V0<small>mL</small></th><th>r²</th><th>Input Ees<small>mmHg/mL</small></th><th>Fall in Pes<small>mmHg</small></th></tr></thead><tbody>
-      ${r.fits.map(x => `<tr><td class="l">${esc(x.patient)}</td><td>${esc(x.mode)}</td><td>${esc(x.hr)}</td><td>${f(x.ees, 2)}</td><td>${f(x.v0, 1)}</td><td>${f(x.r2, 4)}</td><td>${f(x.eesInput, 2)}</td><td>${f(x.pesFall, 1)}</td></tr>`).join('')}</tbody></table>`;
+    const keys = [...new Set(r.fits.map(x => `${x.patient}|${x.mode}`))];
+    const many = r.fits.length > 2 * r.patients.length;
+    const cols = [...new Set(r.fits.map(x => String(x.hr)))].sort((a, b) => Number(a) - Number(b));
+    const pivot = (label: string, get: (x: (typeof r.fits)[number]) => string) => `<h3>${label}</h3><table class="rp-t rp-st"><thead><tr><th class="l">Patient</th><th class="l">Mode</th>${cols.map(c => `<th>${esc(c)} bpm</th>`).join('')}</tr></thead><tbody>
+      ${keys.map(k => { const [pid, mode] = k.split('|'); return `<tr><td class="l">${esc(pid)}</td><td class="l">${esc(mode)}</td>${cols.map(c => { const x = r.fits.find(q => q.patient === pid && q.mode === mode && String(q.hr) === c); return `<td>${x ? get(x) : ''}</td>`; }).join('')}</tr>`; }).join('')}</tbody></table>`;
+    const t = many ? pivot('Fitted Ees (mmHg/mL)', x => f(x.ees, 2)) + pivot('Fitted V0 (mL)', x => f(x.v0, 1))
+      + `<p class="rp-note">r² ≥ ${f(Math.min(...r.fits.map(x => x.r2)), 4)} for every fit; fall in Pes ${f(Math.min(...r.fits.map(x => x.pesFall)), 1)}–${f(Math.max(...r.fits.map(x => x.pesFall)), 1)} mmHg. Model input Ees: ${r.patients.map(p => `${esc(p.id)} ${f(r.fits.find(x => x.patient === p.id)?.eesInput, 2)}`).join(', ')} mmHg/mL. “Rest” = Independent mode at the resting heart rate.</p>` : `<table class="rp-t rp-st"><thead><tr><th class="l">Patient</th><th>Mode</th><th>HR</th><th>Fitted Ees<small>mmHg/mL</small></th><th>V0<small>mL</small></th><th>r²</th><th>Input Ees<small>mmHg/mL</small></th><th>Fall in Pes<small>mmHg</small></th></tr></thead><tbody>
+      ${r.fits.map(x => `<tr><td class="l">${esc(x.patient)}</td><td>${esc(x.mode)}</td><td>${esc(x.hr)}</td><td>${f(x.ees, 2)}</td><td>${f(x.v0, 1)}</td><td>${f(x.r2, 4)}</td><td>${f(x.eesInput, 2)}</td><td>${f(x.pesFall, 1)}</td></tr>`).join('')}</tbody></table>` + '';
     add('Vena caval occlusion', `<h2>Vena caval occlusion: ESPVR</h2><p class="rp-note">Filling pressure lowered over several beats until end-systolic pressure (Pes) fell by the set amount; the ESPVR is the least-squares line through each loop's maximal P/(V − V0) point. The fitted Ees is lower than the input because LV pressure dips with outflow (ejection effect).</p>${t}`);
   }
 
@@ -163,12 +169,14 @@ const CSS = `
 #reportView .rp-bar button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid #c5cad2;border-radius:6px;background:#fff;cursor:pointer}
 #reportView .rp-bar button.pri{background:#1c1f24;color:#fff;border-color:#1c1f24}
 #reportView .rp-pages{padding:20px 0 40px}
-.rp-page{width:11in;height:8.5in;box-sizing:border-box;margin:0 auto 20px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.15);padding:.42in .5in .5in;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.rp-page{width:11in;max-width:calc(100% - 32px);min-height:8.5in;box-sizing:border-box;margin:0 auto 20px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.15);padding:.42in .5in .3in;display:flex;flex-direction:column}
+.rp-body{flex:1}
 .rp-ph{display:flex;justify-content:space-between;font-size:10px;color:#6b7280;border-bottom:2px solid #b2182b;padding-bottom:5px;margin-bottom:12px;text-transform:uppercase;letter-spacing:.06em}
-.rp-pf{position:absolute;left:.5in;right:.5in;bottom:.25in;display:flex;justify-content:space-between;font-size:9.5px;color:#6b7280;border-top:1px solid #e1e4e8;padding-top:5px}
+.rp-pf{display:flex;justify-content:space-between;font-size:9.5px;color:#6b7280;border-top:1px solid #e1e4e8;padding-top:5px;margin-top:14px}
+.rp-gap{margin-top:18px!important}
 .rp-page h1{font:700 26px/1.2 Georgia,serif;margin:4px 0 2px}.rp-sub{color:#4b5563;margin:0 0 14px;font-size:13px}
 .rp-page h2{font-size:14px;margin:4px 0 8px;color:#111}.rp-page h3{font-size:12.5px;margin:0 0 6px}
-.rp-cols{display:flex;gap:24px}.rp-c1{flex:1.35;min-width:0}.rp-c2{flex:1;min-width:0}
+.rp-cols{display:flex;gap:24px;flex-wrap:wrap}.rp-c1{flex:1.35 1 380px;min-width:0}.rp-c2{flex:1 1 300px;min-width:0}
 .rp-find{margin:0;padding-left:18px}.rp-find li{margin:0 0 6px}
 .rp-flags{margin:0;padding-left:18px;color:#7a2810;font-size:11.5px}.rp-flags li{margin:0 0 4px}.rp-ok{color:#1a7f37}
 .rp-kvt{border-collapse:collapse;width:100%;margin-bottom:10px}.rp-kvt th{text-align:left;font-weight:600;color:#4b5563;padding:3px 10px 3px 0;vertical-align:top;white-space:nowrap}.rp-kvt td{padding:3px 0}
@@ -178,25 +186,32 @@ const CSS = `
 .rp-t th{font-size:10.5px;font-weight:700;background:#f2f4f7;border-bottom:1.5px solid #9aa1ab;padding:4px 5px;text-align:right;white-space:nowrap}
 .rp-t th small{display:block;font-weight:400;color:#6b7280;font-size:9px}
 .rp-t td{padding:3px 5px;text-align:right;border-bottom:1px solid #eceef1;white-space:nowrap}
+.rp-t thead{display:table-header-group}.rp-t tr{break-inside:avoid}
 .rp-t tbody tr:nth-child(even) td{background:#fafbfc}
 .rp-t .l{text-align:left}.rp-st td,.rp-st th{font-size:11px}
 .rp-block{border:1px solid #d5d9df;border-radius:6px;padding:8px 10px;margin:0 0 14px;break-inside:avoid}
 .rp-bh{display:flex;gap:16px;align-items:baseline;margin-bottom:6px;flex-wrap:wrap}.rp-bt{font-size:14px;white-space:nowrap}
 .rp-kv{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px}.rp-kv span{color:#6b7280;margin-right:4px}
 .rp-legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:11px;margin:0 0 6px}.rp-legend span{display:inline-flex;align-items:center;gap:5px}
-.rp-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 18px}
+.rp-grid4{display:grid;grid-template-columns:repeat(auto-fill,minmax(2.25in,1fr));gap:6px 18px}
 .rp-chart{display:block}.rp-ct{font:600 10.5px system-ui,sans-serif;fill:#111}.rp-cu{font-weight:400;fill:#6b7280}
 .rp-tick{font:9px system-ui,sans-serif;fill:#4b5563}.rp-grid{stroke:#eceef1;stroke-width:1}.rp-axis{stroke:#9aa1ab;stroke-width:1}
 @media print{
-  @page{size:11in 8.5in;margin:0}
+  @page{size:letter landscape;margin:.45in .45in .5in}
   html,body.rp-printing{margin:0!important;padding:0!important;height:auto!important;min-height:0!important;overflow:visible!important;display:block!important;background:#fff!important}
   body.rp-printing>*:not(#reportView){display:none!important}
   body.rp-printing #reportView{position:static!important;inset:auto;overflow:visible!important;background:#fff!important}
   body.rp-printing #reportView .rp-bar{display:none!important}
   body.rp-printing #reportView .rp-pages{padding:0!important}
-  body.rp-printing .rp-page{margin:0!important;box-shadow:none!important;height:8.46in;break-after:page;page-break-after:always}
+  body.rp-printing .rp-page{width:auto;max-width:none;min-height:0;margin:0!important;padding:0;box-shadow:none!important;display:block;break-after:page;page-break-after:always}
   body.rp-printing .rp-page:last-child{break-after:auto;page-break-after:auto}
-}`;
+  body.rp-printing .rp-block,body.rp-printing .rp-chart,body.rp-printing .rp-find li,body.rp-printing .rp-flags li{break-inside:avoid;page-break-inside:avoid}
+  body.rp-printing .rp-t td,body.rp-printing .rp-t th{padding:2px 4px}
+  body.rp-printing .rp-find,body.rp-printing .rp-kvt{font-size:11px}
+  body.rp-printing .rp-block .rp-t{font-size:9.5px}
+  body.rp-printing .rp-block .rp-t th{font-size:9px}
+}
+`;
 
 /** Show the report full-screen; Save as PDF prints only the report. */
 export function openReport(r: ResearchReport, source: string, fileStem: string): void {
