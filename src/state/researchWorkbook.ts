@@ -64,6 +64,27 @@ export function researchWorkbook(patients: ResearchPatient[], runs: ResearchRun[
     name: `${p.id} waveforms`, headerRows: 2, widths: head.map(() => 14),
     rows: [head, units, ...runs.filter(r => r.patient === p.id).flatMap(r => waveRows(r, o.fs))]
   }));
+  // Summary tables: one block per patient and mode, laid out for reading (the Results sheet is for analysis)
+  const get = (name: string) => RESULT_COLUMNS.find(([n]) => n === name)?.[2];
+  const pget = (name: string) => PROFILE_ROWS.find(([n]) => n === name)?.[2];
+  const val = (r: ResearchRun, k: string, d: number) => { const g = get(k); const v = g ? g(r) : ''; return typeof v === 'number' && Number.isFinite(v) ? round(v, d) : ''; };
+  const pair = (r: ResearchRun, a: string, b: string) => { const x = val(r, a, 0), y = val(r, b, 0); return x === '' ? '' : `${x}/${y}`; };
+  const pv = (p: ResearchPatient, k: string, d: number) => { const g = pget(k); const v = g ? g(p) : ''; return typeof v === 'number' && Number.isFinite(v) ? round(v, d) : v; };
+  const sumHead = ['HR', 'Cuff BP', 'Central BP', 'Central PP', 'AP', 'AIx (%)', 'τ = R·C (s)', 'Ejection duration (ms)', ...(lvOn ? ['EF (%)', 'dP/dt max', 'LVEDP', 'LVESP'] : []), 'SV (mL)', 'CO (L/min)', 'SVR (dyn·s·cm⁻⁵)', 'MAP (mmHg)', ...(lvOn ? ['EDV (mL)', 'ESV (mL)'] : [])];
+  const sumRows: Cell[][] = [['Resting HR:', `${o.options.hrRest} bpm`], []];
+  for (const p of patients) for (const mode of [...new Set(runs.filter(r => r.patient === p.id).map(r => r.mode))]) {
+    sumRows.push(['Patient:', p.id, 'Mode:', mode]);
+    sumRows.push([`${p.params.sex ? 'FEMALE' : 'MALE'}, ${pv(p, 'Height', 0)} cm, ${pv(p, 'Weight', 0)} kg`]);
+    sumRows.push(['Age:', p.params.age]);
+    sumRows.push(['Stroke Vol.', pv(p, 'Stroke volume at rest', 0), 'SVR at Rest', pv(p, 'SVR at rest', 0), 'PWV', `${pv(p, 'Aortic PWV at rest (operating)', 1)} m/s`, 'Aortic diameter', `${pv(p, 'Aortic diameter', 2)} cm`]);
+    sumRows.push([], sumHead);
+    for (const r of runs.filter(x => x.patient === p.id && x.mode === mode)) sumRows.push([
+      r.hr, pair(r, 'cuff_SBP', 'cuff_DBP'), pair(r, 'central_SBP', 'central_DBP'), val(r, 'central_PP', 0), val(r, 'augmentation_pressure_AP', 2), val(r, 'AIx', 0),
+      val(r, 'tau_RC', 2), val(r, 'ejection_duration', 2), ...(lvOn ? [val(r, 'EF', 0), val(r, 'LV_dPdt_max', 0), val(r, 'LVEDP', 1), val(r, 'LVESP', 2)] : []),
+      val(r, 'stroke_volume', 0), val(r, 'cardiac_output', 2), val(r, 'SVR', 0), val(r, 'MAP', 0), ...(lvOn ? [val(r, 'EDV', 0), val(r, 'ESV', 0)] : [])]);
+    sumRows.push([], []);
+  }
+  const summarySheet: Sheet = { name: 'Summary tables', widths: [13, 11, 12, 12, 9, 9, 12, 20, 9, 11, 9, 9, 9, 11, 16, 11, 10, 10], rows: sumRows };
   const vl = vcoList(patients, runs);
   const vcoSheets: Sheet[] = [];
   if (vl.length) {
@@ -111,6 +132,7 @@ export function researchWorkbook(patients: ResearchPatient[], runs: ResearchRun[
       ['Pacing', `${PACING_NOTE} With the ventricle, EDV is adjusted to reach that cardiac output.`],
       ['Physiologic', 'The Pacing relation plus baroreflex buffering of drug effects. No drugs are given in a research run, so Physiologic equals Pacing here.'],
       ['Results sheet', 'One row per patient × mode × heart rate (long format: filter or pivot in Excel). Row 2 = units. inputs_at_slider_limit lists inputs the mode pushed to a control limit.'],
+      ['Summary tables', 'The same results laid out for reading: one block per patient and mode with the patient’s resting profile, then one row per heart rate. Use the Results sheet for filtering and pivot tables.'],
       ['Patient profiles', 'Resting values (Independent, resting heart rate) and the calibrated inputs for each patient.'],
       ['Waveform sheets', `One sheet per patient: one beat per mode and heart rate, resampled at ${o.fs} Hz (Δt = ${round(1000 / o.fs, 4)} ms) from the solver’s 1024 points per beat. ${lvOn ? 'Time 0 = onset of contraction (end-diastole), so lv_pressure starts at LVEDP and holds the whole LV waveform.' : 'Time 0 = start of ejection.'} Pressure and flow share each row (synchronized).`],
       ['dP/dt', `aortic_dPdt and lv_dPdt: 5-point Savitzky–Golay first-derivative filter on the ${o.fs} Hz samples, [−2P(i−2) − P(i−1) + P(i+1) + 2P(i+2)] / (10 Δt).`],
@@ -124,5 +146,5 @@ export function researchWorkbook(patients: ResearchPatient[], runs: ResearchRun[
       ['Important', 'Educational model output, not measured patient data. Not a medical device. See the Methods and Validation tabs for equations, sources and known misses.']
     ]
   };
-  return [results, ...(o.profiles === false ? [] : [profiles]), ...vcoSheets, ...(o.waveforms === false ? [] : waves), readme];
+  return [results, summarySheet, ...(o.profiles === false ? [] : [profiles]), ...vcoSheets, ...(o.waveforms === false ? [] : waves), readme];
 }

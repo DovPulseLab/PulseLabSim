@@ -2,7 +2,10 @@
    download the results as an Excel workbook. Runs in small steps so the page stays responsive. */
 import { ID_COLUMNS, OUTPUT_LABELS, RESEARCH_AGES, RESEARCH_MODES, researchRuns, researchSteps, type ResearchOptions, type ResearchPatient, type ResearchRun } from '../../model/research';
 import { researchWorkbook } from '../../state/researchWorkbook';
-import { writeXlsx, XLSX_MIME } from '../../state/xlsx';
+import { writeXlsx, XLSX_MIME, type Sheet } from '../../state/xlsx';
+import { readXlsx } from '../../state/xlsxRead';
+import { buildReport } from '../../model/researchReport';
+import { openReport, printReport } from '../researchReportView';
 import type { Ctx } from '../context';
 import { $, $$, download, toast } from '../dom';
 
@@ -36,10 +39,20 @@ export function buildResearch(_ctx: Ctx): void {
       <label>Report columns</label><div><div id="rsCols">${Object.entries(OUTPUT_LABELS).map(([k, l]) => `<label class="chk"><input type="checkbox" value="${k}" checked> ${l}</label>`).join('')}</div>
         <button class="btn sm" id="rsAll">All</button> <button class="btn sm" id="rsNone">None</button> <span class="muted">patient, sex, age, mode and heart rate are always included</span></div>
     </div>
-    <p><button class="btn" id="rsRun">Run and download Excel</button> <span id="rsStatus" class="muted" aria-live="polite"></span></p>
+    <p><button class="btn" id="rsRun">Run</button> <span id="rsStatus" class="muted" aria-live="polite"></span></p>
+    <div class="rs-out" id="rsOut" hidden><b>Results ready:</b>
+      <button class="btn" id="rsXlsx">Download Excel</button>
+      <button class="btn" id="rsReport">View report</button>
+      <button class="btn" id="rsPdf">Save report as PDF</button></div>
     <div class="rs-bar" id="rsBar" hidden><div id="rsBarFill"></div></div>
     <p class="fine">Caval occlusion needs the Ventricle (v3) heart model. It lowers left-atrial filling pressure over the chosen beats until end-systolic pressure has fallen by the chosen amount, with heart rate, contractility and arteries held, and fits the ESPVR (sheets <b>Occlusion fits</b>, <b>Occlusion beats</b> and, if ticked, <b>Occlusion loops</b>; same model as the Cardiac cycle tab). Waveform dP/dt uses a 5-point Savitzky–Golay filter. Physiologic adds only baroreflex buffering of drug effects to the Pacing relation, so with no drugs it gives the same numbers as Pacing. EF, dP/dt max, LVEDP and LVESP need the Ventricle (v3) heart model; with Fixed flow those columns are blank. Ages below 25 y use the 25-year-old reference data. Higher sampling rates make larger files (1000 Hz ≈ 4 × the size of 250 Hz). Educational model output, not patient data.</p>
     <div id="rsSummary"></div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h2>Report from a saved workbook <span class="muted">upload a Research .xlsx</span></h2></div>
+    <p>Choose a workbook made with this tab, from today or earlier, even one you have opened and saved in Excel. The report is built from its <b>Results</b>, <b>Patient profiles</b> and <b>README</b> sheets: a summary page with key findings and checks, change per 10 bpm, trend charts, and the data for each patient and mode.</p>
+    <p><label class="btn" for="rsUpload">Upload Excel workbook…</label><input type="file" id="rsUpload" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden> <span id="rsUpStatus" class="muted" aria-live="polite"></span></p>
+    <p class="fine">The file is read in your browser and is not uploaded anywhere.</p>
   </div>`;
 
   $('#rsAll').addEventListener('click', () => $$<HTMLInputElement>('#rsCols input').forEach(i => { i.checked = true; }));
@@ -49,6 +62,10 @@ export function buildResearch(_ctx: Ctx): void {
     $$(`${id} button`).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   });
   $('#rsRun').addEventListener('click', () => { void run(); });
+  $('#rsXlsx').addEventListener('click', () => { if (lastRun) download(`${lastRun.stem}.xlsx`, new Blob([writeXlsx(lastRun.sheets)], { type: XLSX_MIME }), XLSX_MIME); });
+  $('#rsReport').addEventListener('click', () => { if (lastRun) showReport(lastRun.sheets, 'this run', lastRun.stem); });
+  $('#rsPdf').addEventListener('click', () => { if (lastRun && showReport(lastRun.sheets, 'this run', lastRun.stem)) printReport(`${lastRun.stem}-report`); });
+  $('#rsUpload').addEventListener('change', e => { const inp = e.target as HTMLInputElement; const file = inp.files?.[0]; inp.value = ''; if (file) void fromFile(file); });
   $('#pane-research').addEventListener('input', vcoEstimate);
   $('#pane-research').addEventListener('click', () => setTimeout(vcoEstimate, 0));
   vcoEstimate();
@@ -91,6 +108,23 @@ function vcoEstimate(): void {
   el.textContent = ` · ${n} occlusion${n === 1 ? '' : 's'}, about ${n < 60 ? `${Math.max(1, Math.round(n))} s` : `${(n / 60).toFixed(1)} min`}`;
 }
 
+let lastRun: { sheets: Sheet[]; stem: string } | null = null;
+
+/** Build and open the report; false (with a message) if the sheets are not a Research workbook. */
+function showReport(sheets: Sheet[], source: string, stem: string): boolean {
+  try { openReport(buildReport(sheets), source, `${stem}-report`); return true; }
+  catch (e) { toast(`Could not build the report: ${(e as Error).message}.`, 'err', 8000); return false; }
+}
+
+async function fromFile(file: File): Promise<void> {
+  const st = $('#rsUpStatus'); st.textContent = `Reading ${file.name}…`;
+  try {
+    const sheets = await readXlsx(new Uint8Array(await file.arrayBuffer()));
+    st.textContent = '';
+    showReport(sheets, file.name, file.name.replace(/\.xlsx$/i, ''));
+  } catch (e) { st.textContent = ''; toast(`Could not read ${file.name}: ${(e as Error).message}.`, 'err', 8000); }
+}
+
 async function run(): Promise<void> {
   if (running) return;
   const o = readResearchOptions();
@@ -119,9 +153,10 @@ async function run(): Promise<void> {
       vcoLoops: ($('#rsVcoLoops') as HTMLInputElement).checked
     });
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-    download(`pulse-lab-research-${o.sexes.length > 1 ? 'men-women' : o.sexes[0] ? 'women' : 'men'}-${stamp}.xlsx`, new Blob([writeXlsx(sheets)], { type: XLSX_MIME }), XLSX_MIME);
+    lastRun = { sheets, stem: `pulse-lab-research-${o.sexes.length > 1 ? 'men-women' : o.sexes[0] ? 'women' : 'men'}-${stamp}` };
+    $('#rsOut').hidden = false;
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
-    status.textContent = `Done: ${runs.length} runs in ${secs} s. Workbook downloaded.`;
+    status.textContent = `Done: ${runs.length} runs in ${secs} s.`;
     summary(patients, runs);
   } catch (err) {
     status.textContent = '';
