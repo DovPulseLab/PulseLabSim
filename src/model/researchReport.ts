@@ -202,7 +202,9 @@ function findings(r: ResearchReport): string[] {
       const d = r.patients.map(p => { const a = valAt(r, p.id, m, hi, 'MAP'), b = valAt(r, p.id, mode, hi, 'MAP'); return isNum(a) && isNum(b) ? a - b : NaN; }).filter(Number.isFinite);
       return d.length ? `${m} ${range(d, 1)} mmHg` : '';
     }).filter(Boolean);
-    if (diffs.length) out.push(`**Modes:** at ${hi} bpm, MAP compared with ${mode}: ${diffs.join('; ')}.`);
+    const same = r.modes.filter(m => m !== mode).every(m => r.rows.filter(x => x.mode === m).every(x => { const y = r.rows.find(q => q.patient === x.patient && q.mode === mode && q.heart_rate === x.heart_rate); return y && isNum(x.MAP) && isNum(y.MAP) && Math.abs((x.MAP as number) - (y.MAP as number)) < 0.05; }));
+    if (same) out.push(`**Modes:** ${r.modes.filter(m => m !== mode).join(' and ')} gave the same results as ${mode}${r.modes.includes('Physiologic') ? ' (expected: with no drugs, Physiologic adds nothing to Pacing)' : ''}.`);
+    else if (diffs.length) out.push(`**Modes:** at ${hi} bpm, MAP compared with ${mode}: ${diffs.join('; ')}.`);
   }
   if (r.fits.length) {
     const rest = r.fits.filter(f => f.mode === 'Rest');
