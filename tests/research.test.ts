@@ -1,6 +1,6 @@
 /* Research generator: patients × modes × heart rates, and its workbook. */
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RESEARCH, RESULT_COLUMNS, bodySize, runResearch } from '../src/model/research';
+import { DEFAULT_RESEARCH, researchSteps, RESULT_COLUMNS, bodySize, runResearch } from '../src/model/research';
 import { researchWorkbook } from '../src/state/researchWorkbook';
 import { writeXlsx } from '../src/state/xlsx';
 
@@ -92,5 +92,15 @@ describe('research: vena caval occlusion', () => {
   it('is skipped with the fixed-flow heart', () => {
     const r = runResearch({ ...vo, heart: 0 });
     expect(r.patients[0].vco).toBeUndefined();
+  });
+});
+
+describe('research: occlusion in chosen modes only', () => {
+  it('runs the every-heart-rate occlusion only in the ticked modes', () => {
+    const o = { ...DEFAULT_RESEARCH, sexes: [0], ages: [40], hrs: [70, 100], modes: [0, 1], vco: { every: true, modes: [1], dropPes: 25, beats: 8 } };
+    expect(researchSteps(o)).toBe(4 + 1 + 2);           // 4 runs, 1 rest occlusion, 2 Pacing occlusions
+    const r = runResearch(o);
+    expect(r.runs.filter(x => x.vco).map(x => x.mode)).toEqual(['Pacing', 'Pacing']);
+    expect(r.runs.filter(x => x.mode === 'Independent').every(x => !x.vco)).toBe(true);
   });
 });
