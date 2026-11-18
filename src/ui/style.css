@@ -431,3 +431,5 @@ body.present .bottom { grid-template-columns: minmax(0, 1fr); }
 .rs-bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; max-width: 420px; }
 .rs-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .1s; }
 @media (max-width: 700px) { .rs-grid { grid-template-columns: 1fr; } }
+.rs-out { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2, transparent); }
+label.btn { cursor: pointer; display: inline-block; }

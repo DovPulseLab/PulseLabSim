@@ -38,11 +38,11 @@ describe('research runs', () => {
 describe('research workbook', () => {
   const sheets = researchWorkbook(patients, runs, { fs: 250, created: 'test', version: 'v3', options: o });
   it('Results first, README last, one waveform sheet per patient', () => {
-    expect(sheets.map(s => s.name)).toEqual(['Results', 'Patient profiles', 'M20 waveforms', 'M80 waveforms', 'README']);
+    expect(sheets.map(s => s.name)).toEqual(['Results', 'Summary tables', 'Patient profiles', 'M20 waveforms', 'M80 waveforms', 'README']);
     expect(sheets[0].rows.length).toBe(2 + runs.length);
   });
   it('waveform sheets hold one beat per run at the sampling rate', () => {
-    const w = sheets[2], expected = runs.filter(r => r.patient === 'M20').reduce((n, r) => n + Math.round(250 * r.beat.d.T), 0);
+    const w = sheets.find(s => s.name === 'M20 waveforms')!, expected = runs.filter(r => r.patient === 'M20').reduce((n, r) => n + Math.round(250 * r.beat.d.T), 0);
     expect(w.rows.length - 2).toBe(expected);
     expect(w.rows[0]).toEqual(['mode', 'heart_rate', 'sample', 'time', 'aortic_pressure', 'aortic_flow', 'aortic_dPdt', 'lv_pressure', 'lv_volume', 'lv_dPdt']);
     expect(Number(w.rows[2][7])).toBeLessThan(25);   // LV pressure starts at end-diastole (LVEDP), not aortic diastolic pressure
@@ -61,7 +61,7 @@ describe('research choices', () => {
   });
   it('chosen columns and sheets only (ID columns always)', () => {
     const sh = researchWorkbook(patients, runs, { fs: 250, created: 't', version: 'v3', options: o, columns: ['EF', 'LV_dPdt_max'], profiles: false, waveforms: false });
-    expect(sh.map(s => s.name)).toEqual(['Results', 'README']);
+    expect(sh.map(s => s.name)).toEqual(['Results', 'Summary tables', 'README']);
     expect(sh[0].rows[0]).toEqual(['patient', 'sex', 'age', 'mode', 'heart_rate', 'EF', 'LV_dPdt_max']);
   });
 });
@@ -73,11 +73,11 @@ describe('research: vena caval occlusion', () => {
     expect(r.patients[0].vco!.espvr.r2).toBeGreaterThan(0.99);
     expect(r.runs.every(x => !x.vco)).toBe(true);
     const sh = researchWorkbook(r.patients, r.runs, { fs: 500, created: 't', version: 'v3', options: vo });
-    expect(sh.map(s => s.name)).toEqual(['Results', 'Patient profiles', 'Occlusion fits', 'Occlusion beats', 'Occlusion loops (rest)', 'M40 waveforms', 'README']);
+    expect(sh.map(s => s.name)).toEqual(['Results', 'Summary tables', 'Patient profiles', 'Occlusion fits', 'Occlusion beats', 'Occlusion loops (rest)', 'M40 waveforms', 'README']);
     expect(sh[0].rows[0]).not.toContain('VCO_Ees');
-    expect(sh[2].rows.length).toBe(3);                       // header, units, rest
-    expect(sh[3].rows.length).toBe(2 + 11);                  // control + 10 beats
-    expect(sh[1].rows.some(row => row[0] === 'Occlusion ESPVR slope Ees (fitted)')).toBe(true);
+    expect(sh[3].rows.length).toBe(3);                       // header, units, rest
+    expect(sh[4].rows.length).toBe(2 + 11);                  // control + 10 beats
+    expect(sh[2].rows.some(row => row[0] === 'Occlusion ESPVR slope Ees (fitted)')).toBe(true);
   });
   it('at every heart rate too: VCO columns in Results and one fit per run', () => {
     const o2 = { ...vo, vco: { ...vo.vco, every: true } };
@@ -87,7 +87,7 @@ describe('research: vena caval occlusion', () => {
     const head = sh[0].rows[0] as string[], k = head.indexOf('VCO_Ees');
     expect(k).toBeGreaterThan(0);
     expect(sh[0].rows.slice(2).every(row => Number(row[k]) > 0.5)).toBe(true);
-    expect(sh[2].rows.length).toBe(2 + 1 + 2);              // rest + two heart rates
+    expect(sh[3].rows.length).toBe(2 + 1 + 2);              // rest + two heart rates
   });
   it('is skipped with the fixed-flow heart', () => {
     const r = runResearch({ ...vo, heart: 0 });

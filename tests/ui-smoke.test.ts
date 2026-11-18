@@ -209,7 +209,7 @@ describe('UI smoke test', () => {
     expect(document.querySelector('#startOverlay')!.textContent).toMatch(/Things explored: 1 of 320 \/ 60/);
     click('[data-end="close"]');
     expect(errors).toEqual([]);
-  });
+  }, 60_000);   // generous: GitHub runners can be 2–3 × slower than a laptop
 
   it('the trend plot has one legend (the chips) and a sensible HR axis', async () => {
     expect(document.querySelectorAll('#trendTools .chip').length).toBe(9);
