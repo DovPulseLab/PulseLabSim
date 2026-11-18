@@ -30,7 +30,7 @@ export function buildResearch(_ctx: Ctx): void {
       <label>Resting heart rate</label><div><input type="number" id="rsRest" value="70" min="40" max="120" step="1"> bpm <span class="muted">(profile values are at this rate; Pacing is anchored to it)</span></div>
       <label>Caval occlusion</label><div id="rsVco">
         <label class="chk"><input type="checkbox" id="rsVcoOn"> Run for each patient at rest</label>
-        <label class="chk"><input type="checkbox" id="rsVcoEvery"> also at every mode and heart rate <span class="muted">(≈ 1 s each)</span></label>
+        <label class="chk"><input type="checkbox" id="rsVcoEvery"> also at every heart rate, in</label><span id="rsVcoModes">${RESEARCH_MODES.map(m => `<label class="chk"><input type="checkbox" value="${m.resp}"${m.resp === 1 ? ' checked' : ''}> ${m.label}</label>`).join('')}</span> <span class="muted">(≈ 1 s each)</span>
         <br>fall in P<sub>es</sub> <select id="rsVcoDrop">${[15, 20, 25, 30, 35].map(v => `<option value="${v}"${v === 25 ? ' selected' : ''}>${v} mmHg</option>`).join('')}</select>
         over <select id="rsVcoBeats">${[8, 10, 12, 15].map(v => `<option value="${v}"${v === 12 ? ' selected' : ''}>${v}</option>`).join('')}</select> beats
         <label class="chk"><input type="checkbox" id="rsVcoLoops" checked> Loops sheet (resting runs)</label>
@@ -92,7 +92,8 @@ export function readResearchOptions(): ResearchOptions | string {
   const heart = pressed('#rsHeart');
   const vcoOn = ($('#rsVcoOn') as HTMLInputElement).checked;
   if (vcoOn && heart !== 1) return 'caval occlusion needs the Ventricle (v3) heart model';
-  const vco = vcoOn ? { every: ($('#rsVcoEvery') as HTMLInputElement).checked, dropPes: Number(($('#rsVcoDrop') as HTMLSelectElement).value), beats: Number(($('#rsVcoBeats') as HTMLSelectElement).value) } : undefined;
+  const vmodes = $$<HTMLInputElement>('#rsVcoModes input').filter(i => i.checked).map(i => Number(i.value));
+  const vco = vcoOn ? { every: ($('#rsVcoEvery') as HTMLInputElement).checked && vmodes.length > 0, modes: vmodes, dropPes: Number(($('#rsVcoDrop') as HTMLSelectElement).value), beats: Number(($('#rsVcoBeats') as HTMLSelectElement).value) } : undefined;
   return { sexes, ages, hrs, modes, heart, hrRest: rest, ...(vco ? { vco } : {}) };
 }
 
@@ -101,6 +102,7 @@ function vcoEstimate(): void {
   const el = document.getElementById('rsVcoEst'); if (!el) return;
   const every = $('#rsVcoEvery') as HTMLInputElement, on = ($('#rsVcoOn') as HTMLInputElement).checked;
   every.disabled = !on;
+  $$<HTMLInputElement>('#rsVcoModes input').forEach(i => { i.disabled = !on || !every.checked; });
   const o = readResearchOptions();
   if (!on) { el.textContent = ''; return; }
   if (typeof o === 'string') { el.textContent = ` (${o})`; return; }

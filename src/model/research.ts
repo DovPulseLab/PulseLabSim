@@ -34,7 +34,9 @@ export interface ResearchOptions {
   vco?: ResearchVCO;
 }
 export interface ResearchVCO {
-  every: boolean;           // also at every mode × heart rate (slower)
+  every: boolean;           // also at every heart rate (slower)
+  /** modes (resp values) the every-heart-rate occlusion runs in; absent = every chosen mode */
+  modes?: number[];
   dropPes: number;          // mmHg
   beats: number;            // occlusion beats
 }
@@ -77,7 +79,8 @@ export function researchPatient(sex: number, age: number, heart: number, hrRest:
 /** Number of steps researchRuns() yields progress for (runs plus occlusions). */
 export function researchSteps(o: ResearchOptions): number {
   const runs = o.sexes.length * o.ages.length * o.modes.length * o.hrs.length;
-  const v = o.vco && o.heart === 1 ? o.sexes.length * o.ages.length + (o.vco.every ? runs : 0) : 0;
+  const vm = o.vco?.every ? o.modes.filter(m => !o.vco!.modes || o.vco!.modes.includes(m)).length : 0;
+  const v = o.vco && o.heart === 1 ? o.sexes.length * o.ages.length * (1 + vm * o.hrs.length) : 0;
   return runs + v;
 }
 
@@ -97,7 +100,7 @@ export function* researchRuns(o: ResearchOptions): Generator<{ done: number; tot
         const beat = simulate(e.params);
         done++;
         const run: ResearchRun = { patient: pt.id, sex: sex ? 'female' : 'male', age, mode, hr, beat, clamped: e.clamped };
-        if (vopt && vco!.every) { run.vco = simulateVCO(e.params, vopt); done++; }
+        if (vopt && vco!.every && (!vco!.modes || vco!.modes.includes(resp))) { run.vco = simulateVCO(e.params, vopt); done++; }
         yield { done, total, run };
       }
     }
