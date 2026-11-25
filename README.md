@@ -47,6 +47,13 @@ Also: drugs as bolus or infusion events with onset/offset (13 drugs), guided cas
 and scoring, pin baseline (`B`), undo/redo, shareable links (Copy link), exports (PNG, CSV, JSON),
 Present mode (`P`), light/dark theme, Explain drawer (`E`) and a 60-second tour (`H`).
 
+### v3.2: LV calibrated to Dr Mulligan's reference ranges
+
+- The ventricle's healthy profiles now match Dr L. Mulligan's summary of human LV dP/dt max, dP/dt min and LVEDP: at 70 bpm, dP/dt max 1 210–1 640 mmHg/s, −dP/dt −1 800 to −2 040, LVEDP 8 mmHg, τ 40–48 ms (normal adult 1 200–2 000, −1 500 to −2 200, 5–12 mmHg; normal controls 1 563 ± 123, −1 937 ± 385, 8 ± 3). v3.1 gave 960–1 320, −1 160 to −1 350 and 11–13 mmHg.
+- How: faster activation rise, an exponential isovolumic relaxation tail (τ slowing modestly with age), EDPVR through 8 mmHg at the age-typical EDV, then Ees, radius and Γ refitted so SV, cuff SBP and AIx still hit their targets.
+- **Diastolic stiffness** now raises LVEDP at normal preload (8 → 16 mmHg at 2×, 23 at 2.5×).
+- Validation §13 shows the full health-and-disease table with the model's healthy profiles beside it; metric tooltips and normal ranges use the new values.
+
 ### Research tab (v3.1)
 
 - Tab 9, **Research**: runs healthy adults (default men of 20, 40, 60 and 80 y; ages and sex selectable) across a heart-rate grid (default 60–120 bpm in steps of 10) in Independent, Pacing and Physiologic modes, with the Ventricle (v3) or Fixed flow (v2) heart.
