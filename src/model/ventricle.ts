@@ -11,9 +11,9 @@
           and relaxation still finishes before the next beat at 180 bpm
    P_ED   end-diastolic pressure–volume relation (EDPVR), exponential in
           volume index:  P_ED(V) = Pref · exp(a · (V/BSA − EDVIref))
-          with Pref, a and EDVIref from Fujimoto et al. 2012 by age (healthy
-          sedentary adults, invasive PCWP and MRI EDV), so the curve passes
-          through each age group's measured filling pressure and EDV index.
+          with a and EDVIref from Fujimoto et al. 2012 by age (healthy
+          sedentary adults, MRI EDV) and, since v3.2, Pref = 8 mmHg (normal
+          controls' LVEDP, Mulligan 2026) instead of Fujimoto's PCWP.
    ks     ejection effect / source resistance (Shroff et al. 1985)
 
    Valves: aortic Q = (P_LV − P_Ao)/R_AV and mitral Q = (P_LA − P_LV)/R_MV,
@@ -48,8 +48,14 @@ export const FUJIMOTO_2012 = {
   n:    [14, 19, 23, 14]
 } as const;
 const fj = (ys: readonly number[], age: number) => interp(FUJIMOTO_2012.age.map((a, i) => [a, ys[i]] as const), age);
-/** EDPVR for an age: passes through that age's PCWP at its EDV index; slope from the stiffness constant. */
-export const edpvrForAge = (age: number) => ({ pRef: fj(FUJIMOTO_2012.pcwp, age), a: fj(FUJIMOTO_2012.a, age), edviRef: fj(FUJIMOTO_2012.edvi, age) });
+/** EDPVR for an age: passes through LVEDP_REF at that age's EDV index; slope from the stiffness constant. */
+/** v3.2: healthy resting LVEDP at the age-typical EDV, mmHg. Invasive LVEDP in normal controls is
+ *  8 ± 3 mmHg (and 7 mmHg in controls without diastolic HF); Mulligan's working range for normal
+ *  adults is 5–12 mmHg and 6–12 mmHg for healthy older adults (LV_REFERENCE). Fujimoto's supine PCWP
+ *  in sedentary volunteers (11–13 mmHg, no age trend) sits at the top of that range, so v3.2 keeps
+ *  Fujimoto's EDV index and stiffness constant by age but passes the EDPVR through 8 mmHg there. */
+export const LVEDP_REF = 8;
+export const edpvrForAge = (age: number) => ({ pRef: LVEDP_REF, a: fj(FUJIMOTO_2012.a, age), edviRef: fj(FUJIMOTO_2012.edvi, age) });
 export const edviForAge = (age: number) => fj(FUJIMOTO_2012.edvi, age);
 
 export interface LVParams {
@@ -69,17 +75,40 @@ export interface LVParams {
 
 /** Double-Hill activation shape (Stergiopulos 1996 defaults: rise centre 0.7, exponent 1.9;
  *  relaxation centre 1.17, exponent 21.9), x = t / Tmax. */
-export interface HillShape { c1: number; n1: number; c2: number; n2: number; }
+export interface HillShape {
+  c1: number; n1: number; c2: number; n2: number;
+  /** v3.2: exponential relaxation time constant, as a fraction of Tmax. When set, the activation
+   *  follows the Hill curve until its fractional rate of fall −e′/e reaches 1/tauX, then decays as
+   *  exp(−Δx/tauX) (value and slope continuous). Isovolumic pressure then falls exponentially from
+   *  just after aortic closure, as measured (Weiss 1976), so −dP/dt and τ can both be normal. */
+  tauX?: number;
+}
 export const STERGIOPULOS: Readonly<HillShape> = { c1: 0.7, n1: 1.9, c2: 1.17, n2: 21.9 };
 const hillRaw = (x: number, h: HillShape) => { const a = Math.pow(x / h.c1, h.n1), b = Math.pow(x / h.c2, h.n2); return (a / (1 + a)) * (1 / (1 + b)); };
-const peakCache = new Map<string, number>();
-function hillPeak(h: HillShape): number {
-  const key = `${h.c1},${h.n1},${h.c2},${h.n2}`; let m = peakCache.get(key);
-  if (m == null) { m = 0; for (let i = 1; i <= 6000; i++) m = Math.max(m, hillRaw(i / 2000, h)); peakCache.set(key, m); }
-  return m;
+const shapeCache = new Map<string, { peak: number; xd: number; ed: number }>();
+/** Peak of the Hill curve and, with tauX, the join point xd (and raw value ed there). */
+function shapeInfo(h: HillShape) {
+  const key = `${h.c1},${h.n1},${h.c2},${h.n2},${h.tauX ?? ''}`; let s = shapeCache.get(key);
+  if (!s) {
+    let peak = 0, xPeak = 0; for (let i = 1; i <= 6000; i++) { const v = hillRaw(i / 2000, h); if (v > peak) { peak = v; xPeak = i / 2000; } }
+    let xd = Infinity, ed = 0;
+    if (h.tauX) {
+      const dx = 1e-5;
+      for (let x = xPeak; x < 4; x += 0.0005) {
+        const e = hillRaw(x, h), rate = -(hillRaw(x + dx, h) - hillRaw(x - dx, h)) / (2 * dx) / e;
+        if (rate >= 1 / h.tauX) { xd = x; ed = e; break; }
+      }
+    }
+    s = { peak, xd, ed }; shapeCache.set(key, s);
+  }
+  return s;
 }
 /** Normalized activation, peak = 1. */
-export const elastanceShape = (x: number, h: HillShape = STERGIOPULOS): number => x <= 0 ? 0 : hillRaw(x, h) / hillPeak(h);
+export const elastanceShape = (x: number, h: HillShape = STERGIOPULOS): number => {
+  if (x <= 0) return 0;
+  const s = shapeInfo(h);
+  return (x <= s.xd ? hillRaw(x, h) : s.ed * Math.exp(-(x - s.xd) / h.tauX!)) / s.peak;
+};
 /** Time of peak activation, s. Stergiopulos' 0.2 + 0.15·T at 70 bpm, scaled with heart rate by the
  *  Weissler LVET (clamped as in v2: ≥ etMin, ≤ etMaxFrac of the cycle). Before v3 stage 5 Tmax was
  *  0.2 + 0.15·T at every rate, which left the ventricle partly contracted at the next beat above
@@ -89,21 +118,29 @@ export const tMax = (T: number, scale = 1, sex = 0): number => {
   return (0.2 + 0.15 * (60 / 70)) * scale * lvet(hr) / lvet(70);
 };
 
-/** Activation shape and ejection effect fitted (v3 stage 3) for the default adult at 70 bpm, with
- *  Ees set so SV = 72 mL, to: relaxation τ 40–50 ms (Zhang & Kovács 2009: 42–54 ms), dP/dt max
- *  1 000–1 500 and −dP/dt −1 200 to −1 800 mmHg/s (Zhang & Kovács 2009), ejection ≈ 300 ms (study
- *  design; Weissler 294 ms) and v2's AIx and cuff SBP. The relaxation exponent n2 trades τ against
- *  IVRT and −dP/dt; 15.5 balances them. ESPVR intercept V0 = −20 mL (chosen so Ea/Ees ≈ 0.6–0.7 at
- *  the healthy profiles' EF, Chen 1998; with V0 = 0 Ea/Ees fell to 0.36 by 80 y). Result for the
- *  default adult: Ees 2.10, Ea/Ees 0.72, τ 40 ms, dP/dt max 1 210, −dP/dt −1 370, IVCT 74 ms,
- *  LVET 303 ms, IVRT 101 ms, AIx 31 % (v2 28), cuff SBP 117 (v2 122). */
-export const V3_SHAPE: Readonly<HillShape> = { c1: 0.55, n1: 1.9, c2: 1.17, n2: 15.5 };
-export const LV_FIXED: Omit<LVParams, 'edv' | 'bsa' | 'pRef' | 'a' | 'edviRef'> = { ees: 2.10, v0: -20, rav: 0.0025, rmv: 0.006, tmaxScale: 1.05, ks: 0.0009, shape: V3_SHAPE };
+/** Activation shape and ejection effect. v3 stage 3 fitted them to Zhang & Kovács 2009 (dP/dt max
+ *  1 000–1 500, −dP/dt −1 200 to −1 800 mmHg/s). v3.2 recalibrates to Dr L. Mulligan's reference summary
+ *  of human LV hemodynamics (LV_REFERENCE): normal adults dP/dt max 1 200–2 000 and −dP/dt −1 500 to
+ *  −2 200 mmHg/s, LVEDP 5–12 mmHg; invasive normal controls 1 563 ± 123, −1 937 ± 385 mmHg/s, 8 ± 3 mmHg.
+ *  Changes: faster rise (c1 0.55 → 0.40), sharper end of systole (n2 15.5 → 25) with an exponential
+ *  relaxation tail (tauX, by age, see relaxForAge) so isovolumic pressure falls exponentially from just
+ *  after aortic closure (Weiss 1976) and τ stays ≈ 40 ms, and Tmax × 1.00 (was 1.05) for ejection ≈ 300 ms.
+ *  V0 = −20 mL as before (Ea/Ees ≈ 0.6–0.9; Chen 1998). Result for the healthy man of 45 y: Ees 1.99,
+ *  dP/dt max 1 512, −dP/dt −2 038 mmHg/s, τ 40 ms, LVEDP 8 mmHg, IVCT 65 ms, LVET 300 ms, IVRT 105 ms. */
+export const V3_SHAPE: Readonly<HillShape> = { c1: 0.40, n1: 1.9, c2: 1.17, n2: 25, tauX: 0.115 };
+export const LV_FIXED: Omit<LVParams, 'edv' | 'bsa' | 'pRef' | 'a' | 'edviRef'> = { ees: 2.10, v0: -20, rav: 0.0025, rmv: 0.006, tmaxScale: 1.0, ks: 0.0009, shape: V3_SHAPE };
 
-/** Patient-dependent ventricle: EDPVR and EDV from Fujimoto by age, scaled by BSA. */
+/** v3.2: relaxation time constant (fraction of Tmax) by age. 0.115 gives τ ≈ 40 ms and −dP/dt ≈ −2 000
+ *  mmHg/s up to 45 y (normal controls −1 937 ± 385; Mulligan normal range −1 500 to −2 200). Relaxation
+ *  slows modestly with age (τ ≈ 46–48 ms at 65–80 y) so −dP/dt moves toward Mulligan's healthy-older range
+ *  (−1 200 to −1 900). Linear between the ages, flat outside 45–80 y. */
+export const RELAX_BY_AGE = { ages: [45, 65, 80], tauX: [0.115, 0.135, 0.14] } as const;
+export const relaxForAge = (age: number) => interp(RELAX_BY_AGE.ages.map((a, i) => [a, RELAX_BY_AGE.tauX[i]] as const), age);
+
+/** Patient-dependent ventricle: EDPVR and EDV from Fujimoto by age, scaled by BSA; relaxation by age. */
 export function lvForPatient(p: Pick<Params, 'age' | 'height' | 'weight'>): LVParams {
   const bsa = bsaDuBois(p.height, p.weight), ed = edpvrForAge(p.age);
-  return { ...LV_FIXED, bsa, ...ed, edv: ed.edviRef * bsa };
+  return { ...LV_FIXED, bsa, ...ed, edv: ed.edviRef * bsa, shape: { ...V3_SHAPE, tauX: relaxForAge(p.age) } };
 }
 
 
@@ -259,8 +296,8 @@ export function eesForSV(input: Partial<Params>, lv: Partial<LVParams>, targetSV
    every radius and Γ step. Values between ages are interpolated, flat beyond 25–80 y. */
 export const V3_FIT = {
   ages: [25, 45, 65, 80],
-  male:   { ees: [1.77, 2.04, 2.46, 2.83], radius: [101.5, 100, 100, 97.5], gamma: [0.01, 0.05, 0.08, 0.19] },
-  female: { ees: [1.72, 2.00, 2.43, 2.80], radius: [99.5, 96, 95, 92.5],    gamma: [0.12, 0.27, 0.20, 0.23] }
+  male:   { ees: [1.72, 1.99, 2.43, 2.74], radius: [101.5, 100, 100, 98], gamma: [0.01, 0.13, 0.23, 0.34] },
+  female: { ees: [1.68, 1.96, 2.40, 2.78], radius: [99.5, 96, 95, 92.5],  gamma: [0.19, 0.37, 0.39, 0.44] }
 } as const;
 const v3k = (ys: readonly number[]) => V3_FIT.ages.map((a, i) => [a, ys[i]] as const);
 export const v3For = (sex: number, age: number) => {
@@ -284,7 +321,18 @@ const lvCache = new Map<string, BeatResult>();
 /** Ventricle inputs for a patient (heart = 1), as used by simulatePatientLV. */
 export function lvInputsForPatient(p: Params): Partial<LVParams> {
   const base = lvForPatient(p);
-  return { ees: p.ees, edv: base.edv * p.preload, a: base.a * p.lvStiff };
+  return { ees: p.ees, edv: base.edv * p.preload, ...stiffenedEDPVR(base, p.lvStiff) };
+}
+
+/** v3.2: pressure at which a stiffened EDPVR crosses the healthy one, mmHg. Before v3.2 the
+ *  Diastolic stiffness control multiplied a about the reference point (EDVI_ref, P_ref), so at normal
+ *  preload it left LVEDP unchanged. Now the curve turns about the low-volume point where the healthy
+ *  curve is at STIFF_PIVOT_P, so a stiffer ventricle has a higher LVEDP at the same volume:
+ *  LVEDP = P_pivot · (P_ref / P_pivot)^k, i.e. 8 → 11, 16, 23 and 32 mmHg at k = 1.5, 2, 2.5 and 3
+ *  (Mulligan: HFpEF and hypertension with LVH 12–25, restrictive cardiomyopathy 18–30 mmHg). */
+export const STIFF_PIVOT_P = 4;
+export function stiffenedEDPVR(base: Pick<LVParams, 'pRef' | 'a'>, k: number): Pick<LVParams, 'pRef' | 'a'> {
+  return { a: base.a * k, pRef: STIFF_PIVOT_P * Math.pow(base.pRef / STIFF_PIVOT_P, k) };
 }
 export function simulatePatientLV(p: Params): BeatResult {
   const key = JSON.stringify(p);

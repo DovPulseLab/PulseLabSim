@@ -529,6 +529,8 @@ export const CITATIONS = {
   Shroff1985: 'Shroff SG, Janicki JS, Weber KT. Evidence and quantitation of left ventricular systolic resistance. Am J Physiol 1985;249:H358–H370.',
   Chen1998: 'Chen CH, Nakayama M, Nevo E, et al. Coupled systolic-ventricular and vascular stiffening with age. J Am Coll Cardiol 1998;32:1221–1227.',
   Fujimoto2012: 'Fujimoto N, Hastings JL, Bhella PS, et al. Effect of ageing on left ventricular compliance and distensibility in healthy sedentary humans. J Physiol 2012;590:1871–1880.',
+  Mulligan2026: 'Mulligan L. Human left ventricular dP/dtmax, dP/dtmin and LVEDP in health and disease. Reference summary, Cooper University Hospital cardiac research lab, 2026 (working ranges; invasive data from the studies it cites).',
+  Weiss1976: 'Weiss JL, Frederiksen JW, Weisfeldt ML. Hemodynamic determinants of the time-course of fall in canine left ventricular pressure. J Clin Invest 1976;58:751–760.',
   ZhangKovacs2009: 'Zhang W, Kovács SJ. The age dependence of left ventricular filling efficiency. Ultrasound Med Biol 2009;35:1076–1085.',
   Yamakado1997: 'Yamakado T, Takagi E, Okubo S, et al. Effects of aging on left ventricular relaxation in humans: analysis of left ventricular isovolumic pressure decay. Circulation 1997;95:917–923.',
   Patel2021: 'Patel HN, Miyoshi T, Addetia K, et al. Normal values of cardiac output and stroke volume according to measurement technique, age, sex, and ethnicity: results of the World Alliance of Societies of Echocardiography study. J Am Soc Echocardiogr 2021;34:1077–1085.',

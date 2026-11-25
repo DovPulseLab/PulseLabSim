@@ -7,7 +7,7 @@
    jump-to-event buttons and click-to-inspect, and plays synthesised S1/S2 when sound is on.
    Aortic pressure and flow come from the model; the rest is schematic (src/model/cycle.ts). */
 import { buildCycle, indexAt, phaseAt, type Cycle } from '../../model/cycle';
-import { LV_FIXED, lvForPatient } from '../../model/ventricle';
+import { LV_FIXED, lvForPatient, stiffenedEDPVR } from '../../model/ventricle';
 import { lineChart } from '../../render/chart';
 import { col, FONT, setupCanvas } from '../../render/theme';
 import type { BeatResult } from '../../model/solve';
@@ -239,7 +239,7 @@ function drawPV(c: Cycle, r: BeatResult, tAbs: number): void {
   if (i === pvIdx && pvFor === c) return;
   pvIdx = i; pvFor = c;
   const m = r.m, p = r.params;
-  const base = lvForPatient(p), a = base.a * p.lvStiff;
+  const base = lvForPatient(p), { a, pRef } = stiffenedEDPVR(base, p.lvStiff);
   const vol = r.lv.vol, lv = r.lv.p;
   const vMax = Math.max(...vol), vMinL = Math.min(...vol), pMax = Math.max(...lv);
   const x0 = Math.max(0, Math.floor((vMinL - 25) / 10) * 10), x1 = Math.ceil((vMax + 20) / 10) * 10;
@@ -248,7 +248,7 @@ function drawPV(c: Cycle, r: BeatResult, tAbs: number): void {
   const esX = [Math.max(x0, LV_V0), x1], esY = esX.map(v => m.ees * (v - LV_V0));
   // EDPVR curve
   const edX: number[] = [], edY: number[] = [];
-  for (let v = x0; v <= x1; v += (x1 - x0) / 60) { const pe = base.pRef * Math.exp(a * (v / base.bsa - base.edviRef)); if (pe > y1) break; edX.push(v); edY.push(pe); }
+  for (let v = x0; v <= x1; v += (x1 - x0) / 60) { const pe = pRef * Math.exp(a * (v / base.bsa - base.edviRef)); if (pe > y1) break; edX.push(v); edY.push(pe); }
   // Ea line from (EDV, 0) to (ESV, ESP)
   const loopX = [...vol, vol[0]], loopY = [...lv, lv[0]];
   lineChart(cv, {

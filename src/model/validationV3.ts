@@ -6,7 +6,8 @@ import { applyCalibration, bsaDuBois } from './calibrate';
 import { weisslerLVET } from './derive';
 import { simulate } from './solve';
 import { herbertRow, jannerAIx, type CheckKind, type StudyCheck } from './validationStudy';
-import { FUJIMOTO_2012, simulateCalibrated, type LVResult } from './ventricle';
+import { LV_PUBLISHED, OLDER_FROM_AGE, fmtRange, healthyRangeFor } from '../config/lvReference';
+import { FUJIMOTO_2012, LVEDP_REF, simulateCalibrated, type LVResult } from './ventricle';
 import type { Verdict } from './validation';
 
 const within = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
@@ -18,6 +19,7 @@ export interface V3Row { name: string; r: LVResult; checks: StudyCheck[]; }
 export function runV3Validation(): { profiles: V3Row[]; trends: StudyCheck[]; drugs: StudyCheck[]; rate: StudyCheck[] } {
   const profiles: V3Row[] = Object.entries(STUDY_PROFILES).map(([name, sp]) => {
     const p = { ...DEFAULTS, ...PRESETS[name] }, r = simulateCalibrated(p), m = r.beat.m;
+    const hr = healthyRangeFor(sp.age), hrLab = sp.age >= OLDER_FROM_AGE ? `healthy older adult, ≥ ${OLDER_FROM_AGE} y` : 'normal healthy adult', ctl = LV_PUBLISHED[0];
     const h = herbertRow(sp.sex, sp.age), sbpT = h.cSBP[0] + h.amp[0], aixT = jannerAIx(sp.sex, sp.age, 70, sp.height), fi = fjIdx(sp.age);
     const c = (kind: CheckKind, what: string, model: string, reference: string, source: string, verdict: Verdict, fitted = false): StudyCheck => ({ kind, what, model, reference, source, verdict, fitted });
     const checks: StudyCheck[] = [
@@ -26,10 +28,13 @@ export function runV3Validation(): { profiles: V3Row[]; trends: StudyCheck[]; dr
       c('fitted', 'AIx', `${m.AIx.toFixed(0)} %`, `${aixT.toFixed(0)} %`, 'Janner 2010', Math.abs(m.AIx - aixT) <= 2 ? 'pass' : 'near', true),
       c('data', 'Cuff DBP', `${m.bDBP.toFixed(0)} mmHg`, `${STUDY_TARGETS[name].cuffDBP} mmHg`, 'Wright 2011 (NHANES)', Math.abs(m.bDBP - STUDY_TARGETS[name].cuffDBP!) <= 4 ? 'pass' : Math.abs(m.bDBP - STUDY_TARGETS[name].cuffDBP!) <= 8 ? 'near' : 'fail'),
       c('data', 'Ejection fraction', `${(r.ef * 100).toFixed(0)} %`, `${(FUJIMOTO_2012.ef[fi] * 100).toFixed(0)} % (${FUJIMOTO_2012.age[fi]} y group mean)`, 'Fujimoto 2012', band(r.ef * 100, FUJIMOTO_2012.ef[fi] * 100 - 6, FUJIMOTO_2012.ef[fi] * 100 + 6, 4)),
-      c('consistency', 'LVEDP / LA pressure', `${r.lvedp.toFixed(1)} / ${r.pla.toFixed(1)} mmHg`, `PCWP ${FUJIMOTO_2012.pcwp[fi]} mmHg at the age-typical EDV (EDPVR passes through it)`, 'Fujimoto 2012', Math.abs(r.lvedp - r.pla) < 1.5 ? 'pass' : 'near'),
-      c('data', 'dP/dt max', `${r.dpdtMax.toFixed(0)} mmHg/s`, '1 000–1 500 mmHg/s (group means 30 to > 70 y, cath referrals without CVD)', 'Zhang & Kovács 2009', band(r.dpdtMax, 1000, 1500, 200)),
-      c('data', '−dP/dt (peak fall)', `${r.dpdtMin.toFixed(0)} mmHg/s`, '−1 400 to −1 800 (group means; SD ≈ 200–400)', 'Zhang & Kovács 2009', band(r.dpdtMin, -1800, -1400, 250)),
-      c('data', 'Relaxation τ (zero asymptote)', `${(r.tau * 1000).toFixed(0)} ms`, '42–54 ms; no change with age', 'Zhang & Kovács 2009; Yamakado 1997', band(r.tau * 1000, 42, 54, 5)),
+      c('data', 'LVEDP', `${r.lvedp.toFixed(1)} mmHg (LA ${r.pla.toFixed(1)})`, `${fmtRange(hr.lvedp)} mmHg (${hrLab}); controls ${ctl.lvedp} ± ${ctl.lvedpSd}`, 'Mulligan 2026', band(r.lvedp, hr.lvedp.lo, hr.lvedp.hi, 2)),
+      c('data', 'dP/dt max', `${r.dpdtMax.toFixed(0)} mmHg/s`, `${fmtRange(hr.dpdtMax)} mmHg/s (${hrLab}); controls ${ctl.dpdtMax} ± ${ctl.dpdtMaxSd}`, 'Mulligan 2026', band(r.dpdtMax, hr.dpdtMax.lo, hr.dpdtMax.hi, 150)),
+      c('data', '−dP/dt (peak fall)', `${r.dpdtMin.toFixed(0)} mmHg/s`, `${fmtRange(hr.dpdtMin, true)} mmHg/s (${hrLab}); controls ${ctl.dpdtMin} ± ${ctl.dpdtMinSd}`, 'Mulligan 2026', band(r.dpdtMin, hr.dpdtMin.lo, hr.dpdtMin.hi, 150)),
+      c('typical', 'dP/dt max, earlier reference', `${r.dpdtMax.toFixed(0)} mmHg/s`, '1 000–1 500 mmHg/s (group means, cath referrals without CVD); v3.0–3.1 calibration', 'Zhang & Kovács 2009', band(r.dpdtMax, 1000, 1500, 200)),
+      c('typical', '−dP/dt, earlier reference', `${r.dpdtMin.toFixed(0)} mmHg/s`, '−1 400 to −1 800 (group means; SD ≈ 200–400); v3.0–3.1 calibration', 'Zhang & Kovács 2009', band(r.dpdtMin, -1800, -1400, 250)),
+      c('consistency', 'LVEDP / LA pressure', `${r.lvedp.toFixed(1)} / ${r.pla.toFixed(1)} mmHg`, `EDPVR passes through ${LVEDP_REF} mmHg at the age-typical EDV (Fujimoto EDV index); Fujimoto PCWP ${FUJIMOTO_2012.pcwp[fi]} mmHg`, 'Mulligan 2026; Fujimoto 2012', Math.abs(r.lvedp - r.pla) < 1.5 ? 'pass' : 'near'),
+      c('data', 'Relaxation τ (zero asymptote)', `${(r.tau * 1000).toFixed(0)} ms`, '42–54 ms (group means)', 'Zhang & Kovács 2009; Yamakado 1997', band(r.tau * 1000, 42, 54, 5)),
       c('typical', 'IVRT', `${(r.ivrt * 1000).toFixed(0)} ms`, '≈ 60–100 ms (echo; rises with age)', 'Zhang & Kovács 2009', band(r.ivrt * 1000, 60, 100, 15)),
       c('consistency', 'Ejection time', `${(r.lvet * 1000).toFixed(0)} ms`, '≈ 300 ms (study design; Weissler 294–306 at 70 bpm)', 'Weissler 1968', band(r.lvet * 1000, 285, 315, 10)),
       c('data', 'Ea/Ees', `${(r.ea / r.lvp.ees).toFixed(2)} (Ees ${r.lvp.ees.toFixed(2)} mmHg/mL)`, '≈ 0.6–0.7, age-independent', 'Chen 1998; Redfield 2005', band(r.ea / r.lvp.ees, 0.55, 0.8, 0.1)),
@@ -47,7 +52,8 @@ export function runV3Validation(): { profiles: V3Row[]; trends: StudyCheck[]; dr
     const y = by(pre, 25), o = by(pre, 80);
     trends.push({ kind: 'data', what: `Ees rises with age, 25 → 80 y (${lab})`, model: `${y.lvp.ees.toFixed(2)} → ${o.lvp.ees.toFixed(2)} mmHg/mL`, reference: 'Ees increases with age, more steeply in women (Redfield); tracks Ea (Chen)', source: 'Chen 1998; Redfield 2005', verdict: o.lvp.ees > y.lvp.ees ? 'pass' : 'fail' });
     trends.push({ kind: 'data', what: `Ea/Ees with age, 25 → 80 y (${lab})`, model: `${(y.ea / y.lvp.ees).toFixed(2)} → ${(o.ea / o.lvp.ees).toFixed(2)}`, reference: 'age-independent', source: 'Chen 1998', verdict: Math.abs(o.ea / o.lvp.ees - y.ea / y.lvp.ees) <= 0.1 ? 'pass' : Math.abs(o.ea / o.lvp.ees - y.ea / y.lvp.ees) <= 0.2 ? 'near' : 'fail' });
-    trends.push({ kind: 'data', what: `τ with age, 25 → 80 y (${lab})`, model: `${(y.tau * 1000).toFixed(0)} → ${(o.tau * 1000).toFixed(0)} ms`, reference: 'no correlation with age', source: 'Yamakado 1997', verdict: Math.abs(o.tau - y.tau) * 1000 <= 5 ? 'pass' : 'near' });
+    trends.push({ kind: 'data', what: `τ with age, 25 → 80 y (${lab})`, model: `${(y.tau * 1000).toFixed(0)} → ${(o.tau * 1000).toFixed(0)} ms`, reference: 'modest slowing: Mulligan\'s healthy-older −dP/dt range (−1 200 to −1 900) is slower than the normal adult\'s (−1 500 to −2 200); Yamakado found no correlation of τ with age', source: 'Mulligan 2026; Yamakado 1997', verdict: o.tau > y.tau && (o.tau - y.tau) * 1000 <= 10 ? 'pass' : 'near' });
+    trends.push({ kind: 'data', what: `−dP/dt with age, 25 → 80 y (${lab})`, model: `${y.dpdtMin.toFixed(0)} → ${o.dpdtMin.toFixed(0)} mmHg/s`, reference: 'slower (less negative) in healthy older adults', source: 'Mulligan 2026', verdict: o.dpdtMin > y.dpdtMin ? 'pass' : 'near' });
     trends.push({ kind: 'data', what: `dP/dt max with age, 25 → 80 y (${lab})`, model: `${y.dpdtMax.toFixed(0)} → ${o.dpdtMax.toFixed(0)} mmHg/s`, reference: 'rises slightly with age (P = 0.009)', source: 'Zhang & Kovács 2009', verdict: o.dpdtMax > y.dpdtMax ? 'pass' : 'fail' });
     const m45 = by(pre, 45).beat.m.map, drop = Math.min(by(pre, 65).beat.m.map, by(pre, 80).beat.m.map) - m45;
     trends.push({ kind: 'data', what: `MAP after midlife: lowest of 65 / 80 y minus 45 y (${lab})`, model: `${drop.toFixed(1)} mmHg`, reference: 'plateau after midlife', source: 'Franklin 1997', verdict: drop >= -3 ? 'pass' : drop >= -6 ? 'near' : 'fail' });

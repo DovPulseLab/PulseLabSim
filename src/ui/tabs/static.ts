@@ -2,6 +2,7 @@
 import { methodsHtml } from '../../config/methods';
 import { runValidation, type Verdict } from '../../model/validation';
 import { runStudyValidation, type StudyCheck } from '../../model/validationStudy';
+import { LV_POPULATIONS, LV_PUBLISHED, LV_REFERENCE_SOURCE, OLDER_FROM_AGE, fmtRange, healthyRangeFor, type LVRange } from '../../config/lvReference';
 import { runV3Validation } from '../../model/validationV3';
 import { $ } from '../dom';
 
@@ -115,7 +116,7 @@ export function renderValidation(): void {
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.wilkinson)}</table></div>
     <h3>The same benchmark with the ventricle (v3 stage 6)</h3>
     <p>Pacing mode with <b>Heart model → Ventricle (v3)</b>: stroke volume is an output and EDV falls with rate so that cardiac output stays as in Ross 1965. ${dataScore(s5.wilkinsonV3)}</p>
-    <p class="fine">The ventricle moves the pressure results toward the patients (cuff SBP −4 → +2 mmHg, central SBP −6 → −2, forward-wave height −12 → −9, against +9, +3 and +2), because its stroke volume and ejection respond to the shorter cycle rather than being prescribed. Ejection duration now falls more than measured (−99 vs −51 ms): at a fixed preload the ventricle's ejection time follows Weissler (328 → 250 ms from 60 to 100 bpm), but holding cardiac output constant lowers stroke volume 39 %, and a smaller stroke ejects for a shorter time. Both models point to the same cause: these bradycardic pacemaker patients raised cardiac output with pacing (Yokota 2023), where normal hearts hold it constant.</p>
+    <p class="fine">The ventricle moves the pressure results toward the patients (cuff SBP −4 → −1 mmHg, central SBP −6 → −3, forward-wave height −12 → −11, against +9, +3 and +2), because its stroke volume and ejection respond to the shorter cycle rather than being prescribed. Ejection duration now falls more than measured (−94 vs −51 ms): at a fixed preload the ventricle's ejection time follows Weissler (328 → 250 ms from 60 to 100 bpm), but holding cardiac output constant lowers stroke volume 39 %, and a smaller stroke ejects for a shorter time. Both models point to the same cause: these bradycardic pacemaker patients raised cardiac output with pacing (Yokota 2023), where normal hearts hold it constant.</p>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(s5.wilkinsonV3)}</table></div>
   </div>
   <div class="card prose" style="max-width:none">
@@ -139,8 +140,30 @@ export function renderValidation(): void {
     <h3>Heart rate, pacing and exercise with the ventricle</h3>
     <div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(v3.rate)}</table></div>
     ${v3.profiles.map(p => `<h3>${p.name}</h3><div class="table-wrap"><table class="vt">${CHECK_HEAD}${checkRows(p.checks)}</table></div>`).join('')}
-    <p class="fine">Known misses: the 25-year-old man's AIx is above Janner 2010 because his reflection coefficient is at its floor, and his DBP is high; women's SVRI at 65–80 y is above Redfield 2005. The MAP dip after midlife persists (men −5, women −2.5 mmHg), smaller than with the v2 heart. In pacing mode EF falls with rate (no force–frequency effect in the model), where it stays unchanged in normal hearts. Esmolol's contractility fall comes from patients with LV hypertrophy and may overstate the effect in healthy hearts. Absolute dP/dt values should be read as ± 200 mmHg/s: the elastance model has no separate force–velocity or load-dependent relaxation terms.</p>
-  </div>`;
+    <p class="fine">Known misses: the 25-year-old man's AIx is above Janner 2010 because his reflection coefficient is at its floor, and his DBP is high; women's SVRI at 65–80 y is above Redfield 2005. IVRT is long (≈ 105 ms young, 119–129 ms at 65–80 y): with the v3.2 relaxation and an LA pressure of 8 mmHg, LV pressure takes τ·ln(P<sub>closure</sub>/P<sub>LA</sub>) ≈ 2.5 τ to fall to LA pressure; in women −dP/dt gets slightly faster with age because end-systolic pressure rises. The MAP dip after midlife persists (men −5, women −2.5 mmHg), smaller than with the v2 heart. In pacing mode EF falls with rate (no force–frequency effect in the model), where it stays unchanged in normal hearts. Esmolol's contractility fall comes from patients with LV hypertrophy and may overstate the effect in healthy hearts. Absolute dP/dt values should be read as ± 200 mmHg/s: the elastance model has no separate force–velocity or load-dependent relaxation terms.</p>
+  
+  </div>
+  <div class="card prose" style="max-width:none">
+    <h2>13 · LV dP/dt max, dP/dt min and LVEDP: health and disease (v3.2)</h2>
+    <p>Reference ranges from Dr L. Mulligan's summary for the lab: approximate resting values in adult humans, meant as physiological working ranges rather than diagnostic reference intervals, with considerable overlap between disease groups. Since v3.2 the ventricle is calibrated so the healthy study profiles fall in the normal rows (the profiles' own checks are in §12). Model values are shown in <b>bold</b> where a healthy profile falls in a row; the disease rows are reference only, and the model has no disease presets yet.</p>
+    <div class="table-wrap"><table class="vt"><tr><th>Population</th><th>dP/dt max (mmHg/s)</th><th>dP/dt min (mmHg/s)</th><th>LVEDP (mmHg)</th><th>Model healthy profiles</th></tr>
+    ${LV_POPULATIONS.map(pop => {
+      const mine = pop.healthy ? v3.profiles.filter(({ name }) => healthyRangeFor(Number(name.match(/\((\d+) y\)/)![1])).key === pop.key) : [];
+      const inR = (v: number, r: LVRange) => v >= r.lo && v <= r.hi;
+      const cell = mine.length ? mine.map(({ name, r }) => {
+        const ok = inR(r.dpdtMax, pop.dpdtMax) && inR(r.dpdtMin, pop.dpdtMin) && inR(r.lvedp, pop.lvedp);
+        return `${shortName(name)}: <b>${f(r.dpdtMax, 0)} / ${f(r.dpdtMin, 0)} / ${f(r.lvedp, 1)}</b> ${ok ? '<span class="pass">✓</span>' : '<span class="near">≈</span>'}`;
+      }).join('<br>') : '—';
+      return `<tr><td>${pop.healthy ? `<b>${pop.label}</b>` : pop.label}</td><td class="n">${fmtRange(pop.dpdtMax)}</td><td class="n">${fmtRange(pop.dpdtMin, true)}</td><td class="n">${fmtRange(pop.lvedp)}</td><td class="fine">${cell}</td></tr>`;
+    }).join('')}
+    </table></div>
+    <p class="fine">Model values are dP/dt max / dP/dt min / LVEDP at 70 bpm. “Healthy older adult” is applied from ${OLDER_FROM_AGE} y (the summary gives no age). ✓ all three in range; ≈ at least one just outside.</p>
+    <h3>Published invasive measurements</h3>
+    <div class="table-wrap"><table class="vt"><tr><th>Group</th><th>dP/dt max (mmHg/s)</th><th>dP/dt min (mmHg/s)</th><th>LVEDP (mmHg)</th></tr>
+    ${LV_PUBLISHED.map(x => `<tr><td>${x.group}${x.n ? ` (n = ${x.n})` : ''}</td><td class="n">${x.dpdtMax}${x.dpdtMaxSd ? ` ± ${x.dpdtMaxSd}` : ''}</td><td class="n">${x.dpdtMin != null ? `${x.dpdtMin}${x.dpdtMinSd ? ` ± ${x.dpdtMinSd}` : ''}` : '—'}</td><td class="n">${x.lvedp != null ? `${x.lvedp}${x.lvedpSd ? ` ± ${x.lvedpSd}` : ''}` : '—'}</td></tr>`).join('')}
+    </table></div>
+    <p class="fine">Source: ${LV_REFERENCE_SOURCE}. The individual studies behind section 3 are listed in that summary.</p>
+</div>`;
 }
 
 export function renderMethods(): void {
